@@ -1,0 +1,18 @@
+[package]
+name = "fm"
+version = "0.1.0"
+authors = ["Andy Russell <arussell123@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+argh = "0.1.4"
+gio = "0.9.1"
+gtk = "0.9.2"
+libdazzle = "0.2.0"
+mime_guess = "2.0.3"
+pango = "0.9.1"
+relm = "0.21.0"
+relm-derive = "0.21.0"
+
+[patch.crates-io]
+libdazzle = { git = "https://gitlab.gnome.org/euclio/libdazzle-rs.git", branch = "orientable" }
