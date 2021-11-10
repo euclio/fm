@@ -2,19 +2,39 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use gtk::prelude::*;
-use relm::{Relm, Update, Widget};
+use log::*;
 
-const NAME_COLUMN: u8 = 0;
-const ICON_COLUMN: u8 = 1;
-const IS_DIR_COLUMN: u8 = 2;
+use gtk::prelude::*;
+use relm::{connect, Relm, Update, Widget};
+use relm_derive::Msg;
+
+#[repr(i32)]
+enum Column {
+    Name,
+    Icon,
+    IsDir,
+}
 
 pub struct Directory {
+    relm: Relm<DirectoryList>,
     dir: PathBuf,
 }
 
+#[derive(Msg, Clone)]
+pub enum Msg {
+    /// Fired when the selection in the tree view has changed. This event will then trigger
+    /// [`Self::NewEntrySelected`] that contains information from the selection.
+    SelectionChanged,
+
+    /// Fired when the selection in the tree view has changed. Contains the path of the entry that
+    /// is now selected.
+    NewEntrySelected(PathBuf),
+}
+
+/// Displays the contents of a directory using a [`gtk::TreeView`].
 pub struct DirectoryList {
     root: gtk::ScrolledWindow,
+    model: Directory,
 }
 
 impl Widget for DirectoryList {
@@ -24,7 +44,7 @@ impl Widget for DirectoryList {
         self.root.clone()
     }
 
-    fn view(_: &Relm<Self>, model: Self::Model) -> Self {
+    fn view(relm: &Relm<Self>, model: Self::Model) -> Self {
         let root = gtk::ScrolledWindow::new(gtk::NONE_ADJUSTMENT, gtk::NONE_ADJUSTMENT);
 
         root.set_size_request(150, -1);
@@ -35,18 +55,18 @@ impl Widget for DirectoryList {
 
         let icon_cell = gtk::CellRendererPixbuf::new();
         file_column.pack_start(&icon_cell, false);
-        file_column.add_attribute(&icon_cell, "gicon", ICON_COLUMN.into());
+        file_column.add_attribute(&icon_cell, "gicon", Column::Icon as _);
 
         let filename_cell = gtk::CellRendererText::new();
         filename_cell
             .set_property("ellipsize", &pango::EllipsizeMode::End)
             .unwrap();
         file_column.pack_start(&filename_cell, true);
-        file_column.add_attribute(&filename_cell, "text", NAME_COLUMN.into());
+        file_column.add_attribute(&filename_cell, "text", Column::Name as _);
 
         let dir_expand_cell = gtk::CellRendererPixbuf::new();
         file_column.pack_end(&dir_expand_cell, false);
-        file_column.add_attribute(&dir_expand_cell, "gicon", IS_DIR_COLUMN.into());
+        file_column.add_attribute(&dir_expand_cell, "gicon", Column::IsDir as _);
 
         view.append_column(&file_column);
 
@@ -57,7 +77,9 @@ impl Widget for DirectoryList {
 
         root.show_all();
 
-        DirectoryList { root }
+        connect!(relm, view, connect_cursor_changed(_), Msg::SelectionChanged);
+
+        DirectoryList { root, model }
     }
 }
 
@@ -81,21 +103,24 @@ fn list_store_for(dir: &Path) -> io::Result<gtk::ListStore> {
             let icon = gio::content_type_get_icon(mime_type.as_ref());
 
             let dir_icon = if is_dir {
-                Some(gio::Icon::new_for_string("go-next-symbolic").unwrap())
+                Some(gio::Icon::for_string("go-next-symbolic").unwrap())
             } else {
                 None
             };
 
             model.insert_with_values(
                 None,
-                &[NAME_COLUMN.into(), ICON_COLUMN.into(), IS_DIR_COLUMN.into()],
-                &[&name, &icon, &dir_icon],
+                &[
+                    (Column::Name as _, &name),
+                    (Column::Icon as _, &icon),
+                    (Column::IsDir as _, &dir_icon),
+                ],
             );
         }
     }
 
     model.set_sort_column_id(
-        gtk::SortColumn::Index(NAME_COLUMN.into()),
+        gtk::SortColumn::Index(Column::Name as _),
         gtk::SortType::Ascending,
     );
 
@@ -105,11 +130,38 @@ fn list_store_for(dir: &Path) -> io::Result<gtk::ListStore> {
 impl Update for DirectoryList {
     type Model = Directory;
     type ModelParam = PathBuf;
-    type Msg = ();
+    type Msg = Msg;
 
-    fn model(_: &Relm<Self>, dir: PathBuf) -> Directory {
-        Directory { dir }
+    fn model(relm: &Relm<Self>, dir: PathBuf) -> Directory {
+        assert!(dir.is_dir());
+        Directory {
+            relm: relm.clone(),
+            dir,
+        }
     }
 
-    fn update(&mut self, _: ()) {}
+    fn update(&mut self, event: Msg) {
+        match event {
+            Msg::SelectionChanged => {
+                let child = self.root.child().unwrap();
+                let tree_view = child.downcast_ref::<gtk::TreeView>().unwrap();
+                let selection = tree_view.selection();
+
+                if let Some((model, iter)) = selection.selected() {
+                    let name = model
+                        .value(&iter, Column::Name as _)
+                        .get::<String>()
+                        .unwrap();
+
+                    let selected_entry = self.model.dir.join(name);
+                    info!("selected {}", selected_entry.display());
+                    self.model
+                        .relm
+                        .stream()
+                        .emit(Msg::NewEntrySelected(selected_entry));
+                }
+            }
+            Msg::NewEntrySelected(_) => (),
+        }
+    }
 }

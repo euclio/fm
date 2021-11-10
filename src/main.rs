@@ -1,3 +1,4 @@
+use std::io;
 use std::path::PathBuf;
 
 use argh::FromArgs;
@@ -13,7 +14,9 @@ struct Args {
     dir: PathBuf,
 }
 
-fn main() {
+fn main() -> Result<(), io::Error> {
+    env_logger::init();
     let args: Args = argh::from_env();
-    Win::run(args.dir).unwrap();
+    Win::run(args.dir.canonicalize()?).unwrap();
+    Ok(())
 }
