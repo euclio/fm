@@ -50,6 +50,7 @@ impl Widget for DirectoryList {
         root.set_size_request(150, -1);
 
         let view = gtk::TreeView::new();
+        view.set_headers_visible(false);
 
         let file_column = gtk::TreeViewColumn::new();
 
