@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use gtk::prelude::*;
-
-use relm::{connect, Component, ContainerWidget, Relm, Update, Widget};
-use relm_derive::Msg;
+use log::*;
+use relm::{Update, Widget};
+use relm_derive::{widget, Msg};
 
 use crate::widgets::FilePanes;
 
@@ -11,6 +11,7 @@ mod widgets;
 
 #[derive(Msg)]
 pub enum Msg {
+    NewLocation(PathBuf),
     Quit,
 }
 
@@ -18,51 +19,46 @@ pub struct Model {
     selected_path: PathBuf,
 }
 
-pub struct Win {
-    window: gtk::Window,
-    _file_panes: Component<FilePanes>,
-}
-
-impl Update for Win {
-    type Model = Model;
-    type ModelParam = PathBuf;
-    type Msg = Msg;
-
-    fn model(_: &Relm<Self>, selected_path: PathBuf) -> Model {
+#[widget]
+impl Widget for Win {
+    fn model(selected_path: PathBuf) -> Model {
         Model { selected_path }
     }
 
     fn update(&mut self, event: Msg) {
         match event {
+            Msg::NewLocation(location) => {
+                self.model.selected_path = location;
+                self.components
+                    .file_panes
+                    .emit(<FilePanes as Update>::Msg::NewRoot(
+                        self.model.selected_path.clone(),
+                    ));
+            }
             Msg::Quit => gtk::main_quit(),
         }
     }
-}
 
-impl Widget for Win {
-    type Root = gtk::Window;
+    view! {
+        gtk::Window {
+            gtk::Paned {
+                gtk::PlacesSidebar {
+                    open_location(_, loc, _) => {
+                        info!("new sidebar location clicked: {}", loc.uri());
 
-    fn root(&self) -> Self::Root {
-        self.window.clone()
-    }
-
-    fn view(relm: &Relm<Self>, model: Self::Model) -> Self {
-        let window = gtk::Window::new(gtk::WindowType::Toplevel);
-
-        connect!(
-            relm,
-            window,
-            connect_delete_event(_, _),
-            return (Some(Msg::Quit), Inhibit(false))
-        );
-
-        let file_panes = window.add_widget::<FilePanes>(model.selected_path.clone());
-
-        window.show_all();
-
-        Win {
-            window,
-            _file_panes: file_panes,
+                        match loc.path() {
+                            Some(path) => Some(Msg::NewLocation(path)),
+                            None => {
+                                error!("no path for location, ignoring");
+                                None
+                            }
+                        }
+                    }
+                },
+                #[name="file_panes"]
+                FilePanes(self.model.selected_path.clone()),
+            },
+            delete_event(_, _) => (Msg::Quit, Inhibit(false)),
         }
     }
 }

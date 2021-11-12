@@ -15,6 +15,7 @@ pub struct Model {
 
 #[derive(Msg, Clone)]
 pub enum Msg {
+    NewRoot(PathBuf),
     NewEntrySelected(PathBuf),
 }
 
@@ -37,6 +38,16 @@ impl Widget for FilePanes {
 
     fn update(&mut self, event: Msg) {
         match event {
+            Msg::NewRoot(root) => {
+                info!("new file root: {}", root.display());
+
+                while let Some(pane) = self.model.panes.pop() {
+                    self.root().remove_widget(pane);
+                }
+
+                self.model.selected_dir = root;
+                self.init_view();
+            }
             Msg::NewEntrySelected(entry) => self.handle_new_selection(entry),
         }
     }
