@@ -67,7 +67,7 @@ dependencies = [
  "glib-sys",
  "gobject-sys",
  "libc",
- "system-deps 3.2.0",
+ "system-deps",
 ]
 
 [[package]]
@@ -114,7 +114,7 @@ checksum = "b448b876970834fda82ba3aeaccadbd760206b75388fc5c1b02f1e343b697570"
 dependencies = [
  "glib-sys",
  "libc",
- "system-deps 3.2.0",
+ "system-deps",
 ]
 
 [[package]]
@@ -122,15 +122,6 @@ name = "cfg-expr"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b412e83326147c2bb881f8b40edfbf9905b9b8abaebd0e47ca190ba62fda8f0e"
-dependencies = [
- "smallvec",
-]
-
-[[package]]
-name = "cfg-expr"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edae0b9625d1fce32f7d64b71784d9b1bf8469ec1a9c417e44aaf16a9cbd7571"
 dependencies = [
  "smallvec",
 ]
@@ -283,7 +274,7 @@ dependencies = [
  "glib-sys",
  "gobject-sys",
  "libc",
- "system-deps 3.2.0",
+ "system-deps",
 ]
 
 [[package]]
@@ -300,7 +291,7 @@ dependencies = [
  "libc",
  "pango-sys",
  "pkg-config",
- "system-deps 3.2.0",
+ "system-deps",
 ]
 
 [[package]]
@@ -329,7 +320,7 @@ dependencies = [
  "glib-sys",
  "gobject-sys",
  "libc",
- "system-deps 3.2.0",
+ "system-deps",
  "winapi",
 ]
 
@@ -374,7 +365,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c1d60554a212445e2a858e42a0e48cece1bd57b311a19a9468f70376cf554ae"
 dependencies = [
  "libc",
- "system-deps 3.2.0",
+ "system-deps",
 ]
 
 [[package]]
@@ -385,7 +376,7 @@ checksum = "aa92cae29759dae34ab5921d73fff5ad54b3d794ab842c117e36cafc7994c3f5"
 dependencies = [
  "glib-sys",
  "libc",
- "system-deps 3.2.0",
+ "system-deps",
 ]
 
 [[package]]
@@ -426,7 +417,7 @@ dependencies = [
  "gobject-sys",
  "libc",
  "pango-sys",
- "system-deps 3.2.0",
+ "system-deps",
 ]
 
 [[package]]
@@ -492,9 +483,10 @@ checksum = "a60553f9a9e039a333b4e9b20573b9e9b9c0bb3a11e201ccc48ef4283456d673"
 [[package]]
 name = "libdazzle"
 version = "0.3.0"
-source = "git+https://gitlab.gnome.org/euclio/libdazzle-rs.git?branch=version-update#842635d73ada76f5af73217bc1f0f62ec1cab66b"
+source = "git+https://gitlab.gnome.org/euclio/libdazzle-rs.git?branch=child-props#ddcf0e1e241fb800031ad8e50aad63e55f0a77f3"
 dependencies = [
  "bitflags",
+ "cairo-rs",
  "gdk",
  "gio",
  "glib",
@@ -508,10 +500,12 @@ dependencies = [
 [[package]]
 name = "libdazzle-sys"
 version = "0.3.0"
-source = "git+https://gitlab.gnome.org/euclio/libdazzle-rs.git?branch=version-update#842635d73ada76f5af73217bc1f0f62ec1cab66b"
+source = "git+https://gitlab.gnome.org/euclio/libdazzle-rs.git?branch=child-props#ddcf0e1e241fb800031ad8e50aad63e55f0a77f3"
 dependencies = [
  "cairo-sys-rs",
+ "gdk",
  "gdk-sys",
+ "gio",
  "gio-sys",
  "glib-sys",
  "gobject-sys",
@@ -519,7 +513,7 @@ dependencies = [
  "libc",
  "pango-sys",
  "pkg-config",
- "system-deps 5.0.0",
+ "system-deps",
 ]
 
 [[package]]
@@ -590,7 +584,7 @@ dependencies = [
  "glib-sys",
  "gobject-sys",
  "libc",
- "system-deps 3.2.0",
+ "system-deps",
 ]
 
 [[package]]
@@ -804,26 +798,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "480c269f870722b3b08d2f13053ce0c2ab722839f472863c3e2d61ff3a1c2fa6"
 dependencies = [
  "anyhow",
- "cfg-expr 0.8.1",
+ "cfg-expr",
  "heck",
  "itertools",
  "pkg-config",
  "strum",
  "strum_macros",
  "thiserror",
- "toml",
- "version-compare",
-]
-
-[[package]]
-name = "system-deps"
-version = "5.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18db855554db7bd0e73e06cf7ba3df39f97812cb11d3f75e71c39bf45171797e"
-dependencies = [
- "cfg-expr 0.9.0",
- "heck",
- "pkg-config",
  "toml",
  "version-compare",
 ]

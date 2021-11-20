@@ -5,7 +5,7 @@ use log::*;
 use relm::{connect, Component, ContainerWidget, Relm, Widget};
 use relm_derive::{widget, Msg};
 
-use super::DirectoryList;
+use super::{DirectoryList, FilePreview};
 
 pub struct Model {
     selected_dir: PathBuf,
@@ -91,6 +91,10 @@ impl Widget for FilePanes {
 
         let new_directory_list = self.root().add_widget::<DirectoryList>(dir);
 
+        let n_children = self.root().n_children() as i32;
+        self.root()
+            .set_child_index(&self.widgets.preview, n_children);
+
         info!(
             "added new directory pane ({} pane(s) total)",
             self.root().n_children()
@@ -116,6 +120,9 @@ impl Widget for FilePanes {
         dazzle::MultiPaned {
             halign: gtk::Align::Start, // FIXME: This causes the resize grips to stop working.
             orientation: gtk::Orientation::Horizontal,
+
+            #[name="preview"]
+            FilePreview(),
         }
     }
 }

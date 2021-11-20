@@ -18,6 +18,6 @@ relm = "0.22.0"
 relm-derive = "0.22.0"
 
 [patch.crates-io]
-libdazzle = { git = "https://gitlab.gnome.org/euclio/libdazzle-rs.git", branch = "version-update" }
+libdazzle = { git = "https://gitlab.gnome.org/euclio/libdazzle-rs.git", branch = "child-props" }
 
 [features]
