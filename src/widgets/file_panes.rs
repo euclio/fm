@@ -7,9 +7,26 @@ use relm_derive::{widget, Msg};
 
 use super::{DirectoryList, FilePreview};
 
+/// Directory listing entry that will be displayed in the file preview.
+#[derive(Debug, Clone)]
+pub struct Selection {
+    /// The selected item.
+    selection: PathBuf,
+}
+
 pub struct Model {
-    selected_dir: PathBuf,
+    /// The root directory that the file panes are relative to.
+    root: PathBuf,
+
+    /// The directory listed in the rightmost pane.
+    current_dir: PathBuf,
+
+    /// Selected file. If `None`, the file panes will only contain a listing of the root directory.
+    selection: Option<Selection>,
+
+    /// Child widgets containing directory listings for each component of the selection.
     panes: Vec<Component<DirectoryList>>,
+
     relm: Relm<FilePanes>,
 }
 
@@ -27,13 +44,15 @@ impl Widget for FilePanes {
 
         Model {
             relm: relm.clone(),
-            selected_dir,
+            root: selected_dir.clone(),
+            current_dir: selected_dir.clone(),
+            selection: None,
             panes: vec![],
         }
     }
 
     fn init_view(&mut self) {
-        self.push_directory(self.model.selected_dir.clone());
+        self.push_directory(self.model.root.clone());
     }
 
     fn update(&mut self, event: Msg) {
@@ -45,7 +64,8 @@ impl Widget for FilePanes {
                     self.root().remove_widget(pane);
                 }
 
-                self.model.selected_dir = root;
+                self.model.root = root;
+
                 self.init_view();
             }
             Msg::NewEntrySelected(entry) => self.handle_new_selection(entry),
@@ -53,35 +73,39 @@ impl Widget for FilePanes {
     }
 
     fn handle_new_selection(&mut self, new_entry: PathBuf) {
-        let diff = pathdiff::diff_paths(&new_entry, &self.model.selected_dir);
         info!(
-            "current directory: {}, new_directory: {}, diff: {:?}",
-            self.model.selected_dir.display(),
-            new_entry.display(),
-            diff.as_ref().map(|diff| diff.display())
+            "new selection: {:?}, current dir: {:?}",
+            new_entry, self.model.current_dir
         );
 
-        match diff {
-            Some(relative_path) => {
-                for component in relative_path.components() {
-                    match component {
-                        path::Component::Normal(name) => {
-                            let component = self.model.selected_dir.join(name);
-                            if component.is_dir() {
-                                self.model.selected_dir = component;
-                                self.push_directory(self.model.selected_dir.clone());
-                            }
-                        }
-                        path::Component::ParentDir => {
-                            self.pop_directory();
-                            self.model.selected_dir.pop();
-                        }
-                        _ => todo!(),
+        // Remove panes for uncommon parent directories.
+        let diff = pathdiff::diff_paths(&new_entry, &self.model.current_dir)
+            .expect("selection must be relative to the current directory");
+
+        info!("selection diff: {:?}", diff);
+
+        for component in diff.components() {
+            match component {
+                path::Component::ParentDir => self.pop_directory(),
+                path::Component::Normal(name) => {
+                    let component_path = self.model.current_dir.join(name);
+                    if component_path.is_dir() {
+                        self.push_directory(component_path);
                     }
                 }
+                _ => unreachable!("unexpected component: {:?}", component),
             }
-            None => todo!(),
         }
+
+        self.model.selection = Some(Selection {
+            selection: new_entry,
+        });
+
+        self.components
+            .preview
+            .emit(super::file_preview::Msg::NewSelection(
+                self.model.selection.clone(),
+            ));
     }
 
     fn push_directory(&mut self, dir: PathBuf) {
@@ -89,7 +113,11 @@ impl Widget for FilePanes {
 
         assert!(dir.is_dir());
 
-        let new_directory_list = self.root().add_widget::<DirectoryList>(dir);
+        self.model.current_dir = dir;
+
+        let new_directory_list = self
+            .root()
+            .add_widget::<DirectoryList>(self.model.current_dir.clone());
 
         let n_children = self.root().n_children() as i32;
         self.root()
@@ -112,6 +140,7 @@ impl Widget for FilePanes {
     }
 
     fn pop_directory(&mut self) {
+        self.model.current_dir.pop();
         let directory_list = self.model.panes.pop().expect("no directories in the stack");
         self.root().remove_widget(directory_list);
     }

@@ -1,15 +1,30 @@
 use relm::Widget;
-use relm_derive::widget;
+use relm_derive::{widget, Msg};
 
-pub struct Model {}
+use super::Selection;
+
+pub struct Model {
+    selection: Option<Selection>,
+}
+
+#[derive(Msg)]
+pub enum Msg {
+    NewSelection(Option<Selection>),
+}
 
 #[widget]
 impl Widget for FilePreview {
     fn model() -> Model {
-        Model {}
+        Model { selection: None }
     }
 
-    fn update(&mut self, _event: ()) {}
+    fn update(&mut self, event: Msg) {
+        match event {
+            Msg::NewSelection(selection) => {
+                self.model.selection = selection;
+            }
+        }
+    }
 
     view! {
         gtk::Box {}
