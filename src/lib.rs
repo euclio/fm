@@ -55,8 +55,10 @@ impl Widget for Win {
                         }
                     }
                 },
-                #[name="file_panes"]
-                FilePanes(self.model.selected_path.clone()),
+                gtk::ScrolledWindow {
+                    #[name="file_panes"]
+                    FilePanes(self.model.selected_path.clone()),
+                },
             },
             delete_event(_, _) => (Msg::Quit, Inhibit(false)),
         }

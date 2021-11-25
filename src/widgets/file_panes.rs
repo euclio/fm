@@ -11,7 +11,7 @@ use super::{DirectoryList, FilePreview};
 #[derive(Debug, Clone)]
 pub struct Selection {
     /// The selected item.
-    selection: PathBuf,
+    pub item: PathBuf,
 }
 
 pub struct Model {
@@ -97,9 +97,11 @@ impl Widget for FilePanes {
             }
         }
 
-        self.model.selection = Some(Selection {
-            selection: new_entry,
-        });
+        self.model.selection = if new_entry.is_file() {
+            Some(Selection { item: new_entry })
+        } else {
+            None
+        };
 
         self.components
             .preview
