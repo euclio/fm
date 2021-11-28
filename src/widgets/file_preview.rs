@@ -1,5 +1,10 @@
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::Path;
+
 use gtk::prelude::*;
 use log::*;
+use mime_guess::mime::{self, Mime};
 use relm::Widget;
 use relm_derive::{widget, Msg};
 
@@ -32,7 +37,25 @@ impl Widget for FilePreview {
                         self.widgets
                             .file_name
                             .set_text(&selection.item.file_name().unwrap().to_string_lossy());
-                        self.widgets.image.set_from_file(&selection.item);
+
+                        let block = read_block(&selection.item).unwrap_or_default();
+                        let (mime, uncertain) = gio::content_type_guess(
+                            Some(&selection.item.to_string_lossy()),
+                            &block,
+                        );
+                        info!("guessed mime: {}, uncertain: {}", mime, uncertain);
+
+                        let mime = mime
+                            .parse::<Mime>()
+                            .expect("could not parse guessed mime type");
+
+                        match (mime.type_(), mime.subtype()) {
+                            (mime::IMAGE, _) => self.widgets.image.set_from_file(&selection.item),
+                            _ => self.widgets.image.set_from_gicon(
+                                &gio::content_type_get_icon(mime.essence_str()),
+                                gtk::IconSize::Dialog,
+                            ),
+                        }
 
                         self.root().set_opacity(1.0);
                     }
@@ -61,4 +84,14 @@ impl Widget for FilePreview {
             },
         }
     }
+}
+
+/// Reads the first block of a file.
+fn read_block(path: &Path) -> io::Result<Vec<u8>> {
+    let mut f = File::open(path)?;
+
+    let mut buf = vec![0; 4096];
+    f.read_exact(&mut buf)?;
+
+    Ok(buf)
 }
