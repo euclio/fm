@@ -34,9 +34,14 @@ impl Widget for FilePreview {
                             .set_text(&selection.item.file_name().unwrap().to_string_lossy());
                         self.widgets.image.set_from_file(&selection.item);
 
-                        self.root().set_visible(true);
+                        self.root().set_opacity(1.0);
                     }
-                    None => self.root().set_visible(false),
+                    None => {
+                        // If the selection is a directory, hide the contents of the file preview.
+                        // Set opacity instead of visibility to preserve the space allocated
+                        // to the preview widget.
+                        self.root().set_opacity(0.0);
+                    }
                 }
             }
         }

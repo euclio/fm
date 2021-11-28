@@ -149,7 +149,6 @@ impl Widget for FilePanes {
 
     view! {
         dazzle::MultiPaned {
-            halign: gtk::Align::Start, // FIXME: This causes the resize grips to stop working.
             orientation: gtk::Orientation::Horizontal,
 
             #[name="preview"]
