@@ -38,6 +38,9 @@ impl Widget for FilePreview {
                             .file_name
                             .set_text(&selection.item.file_name().unwrap().to_string_lossy());
 
+                        self.widgets.image.set_visible(false);
+                        self.widgets.text_container.set_visible(false);
+
                         let block = read_block(&selection.item).unwrap_or_default();
                         let (mime, uncertain) = gio::content_type_guess(
                             Some(&selection.item.to_string_lossy()),
@@ -50,11 +53,25 @@ impl Widget for FilePreview {
                             .expect("could not parse guessed mime type");
 
                         match (mime.type_(), mime.subtype()) {
-                            (mime::IMAGE, _) => self.widgets.image.set_from_file(&selection.item),
-                            _ => self.widgets.image.set_from_gicon(
-                                &gio::content_type_get_icon(mime.essence_str()),
-                                gtk::IconSize::Dialog,
-                            ),
+                            (mime::IMAGE, _) => {
+                                self.widgets.image.set_from_file(&selection.item);
+                                self.widgets.image.set_visible(true);
+                            }
+                            (mime::TEXT, _) => {
+                                let text = String::from_utf8_lossy(&block);
+
+                                debug!("text: {}", text);
+
+                                self.widgets.text.buffer().unwrap().set_text(&text);
+                                self.widgets.text_container.set_visible(true);
+                            }
+                            _ => {
+                                self.widgets.image.set_from_gicon(
+                                    &gio::content_type_get_icon(mime.essence_str()),
+                                    gtk::IconSize::Dialog,
+                                );
+                                self.widgets.image.set_visible(true);
+                            }
                         }
 
                         self.root().set_opacity(1.0);
@@ -74,9 +91,25 @@ impl Widget for FilePreview {
         gtk::Box {
             halign: gtk::Align::Fill,
             hexpand: true,
+            valign: gtk::Align::Fill,
+            vexpand: true,
             orientation: gtk::Orientation::Vertical,
+
             #[name = "image"]
-            gtk::Image {},
+            gtk::Image {
+                visible: false,
+            },
+
+            #[name = "text_container"]
+            gtk::ScrolledWindow {
+                propagate_natural_height: true,
+                visible: false,
+
+                #[name = "text"]
+                gtk::TextView {
+                    editable: false,
+                },
+            },
 
             #[name = "file_name"]
             gtk::Label {
@@ -86,12 +119,13 @@ impl Widget for FilePreview {
     }
 }
 
-/// Reads the first block of a file.
+/// Reads at most the first block of a file.
 fn read_block(path: &Path) -> io::Result<Vec<u8>> {
     let mut f = File::open(path)?;
 
     let mut buf = vec![0; 4096];
-    f.read_exact(&mut buf)?;
+    let n = f.read(&mut buf)?;
+    buf.truncate(n);
 
     Ok(buf)
 }

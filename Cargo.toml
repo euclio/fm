@@ -8,7 +8,7 @@ edition = "2018"
 argh = "0.1.6"
 env_logger = "0.9.0"
 gio = "0.14.8"
-gtk = "0.14.3"
+gtk = { version = "0.14.3", features = ["v3_22"] }
 libdazzle = "0.3.0"
 log = "0.4.14"
 mime_guess = "2.0.3"
