@@ -42,10 +42,11 @@ impl Widget for FilePreview {
                         self.widgets.text_container.set_visible(false);
 
                         let block = read_block(&selection.item).unwrap_or_default();
-                        let (mime, uncertain) = gio::content_type_guess(
+                        let (content_type, uncertain) = gio::content_type_guess(
                             Some(&selection.item.to_string_lossy()),
                             &block,
                         );
+                        let mime = gio::content_type_get_mime_type(&content_type).unwrap();
                         info!("guessed mime: {}, uncertain: {}", mime, uncertain);
 
                         let mime = mime
