@@ -1,22 +1,17 @@
-use std::io;
-use std::path::PathBuf;
+use std::env;
 
-use argh::FromArgs;
-use relm::Widget;
+use relm4::gtk;
+use relm4::RelmApp;
 
-use fm::Win;
+use fm4::AppModel;
 
-/// File manager.
-#[derive(FromArgs)]
-struct Args {
-    /// directory to open.
-    #[argh(positional)]
-    dir: PathBuf,
-}
-
-fn main() -> Result<(), io::Error> {
+fn main() {
     env_logger::init();
-    let args: Args = argh::from_env();
-    Win::run(args.dir.canonicalize()?).unwrap();
-    Ok(())
+
+    // Call `gtk::init` manually because we instantiate GTK types in our model.
+    gtk::init().unwrap();
+
+    let model = AppModel::new(&env::current_dir().unwrap());
+    let app = RelmApp::new(model);
+    app.run();
 }

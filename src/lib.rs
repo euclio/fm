@@ -1,66 +1,95 @@
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
-use gtk::prelude::*;
 use log::*;
-use relm::{Update, Widget};
-use relm_derive::{widget, Msg};
+use relm4::factory::FactoryVec;
+use relm4::gtk::prelude::*;
+use relm4::{gtk, AppUpdate, Model, Sender, Widgets};
 
-use crate::widgets::FilePanes;
+mod directory_list;
 
-mod widgets;
+use directory_list::Directory;
 
-#[derive(Msg)]
-pub enum Msg {
-    NewLocation(PathBuf),
-    Quit,
+pub struct AppModel {
+    directories: FactoryVec<Directory>,
 }
 
-pub struct Model {
-    selected_path: PathBuf,
+impl AppModel {
+    pub fn new(root: &Path) -> AppModel {
+        let mut model = AppModel {
+            directories: FactoryVec::new(),
+        };
+
+        model.directories.push(Directory::new(&root));
+
+        model
+    }
+
+    /// Returns the deepest directory that is listed (the rightmost listing).
+    pub fn last_dir(&self) -> PathBuf {
+        self.directories
+            .as_slice()
+            .last()
+            .expect("there must be at least one directory listed")
+            .dir()
+    }
 }
 
-#[widget]
-impl Widget for Win {
-    fn model(selected_path: PathBuf) -> Model {
-        Model { selected_path }
-    }
+#[derive(Debug)]
+pub enum AppMsg {
+    NewSelection(PathBuf),
+}
 
-    fn update(&mut self, event: Msg) {
-        match event {
-            Msg::NewLocation(location) => {
-                self.model.selected_path = location;
-                self.components
-                    .file_panes
-                    .emit(<FilePanes as Update>::Msg::NewRoot(
-                        self.model.selected_path.clone(),
-                    ));
-            }
-            Msg::Quit => gtk::main_quit(),
-        }
-    }
+impl Model for AppModel {
+    type Msg = AppMsg;
+    type Widgets = AppWidgets;
+    type Components = ();
+}
 
-    view! {
-        gtk::Window {
-            gtk::Paned {
-                gtk::PlacesSidebar {
-                    open_location(_, loc, _) => {
-                        info!("new sidebar location clicked: {}", loc.uri());
+impl AppUpdate for AppModel {
+    fn update(&mut self, msg: AppMsg, _components: &(), _sender: Sender<AppMsg>) -> bool {
+        match msg {
+            AppMsg::NewSelection(path) => {
+                let mut last_dir = self.last_dir();
 
-                        match loc.path() {
-                            Some(path) => Some(Msg::NewLocation(path)),
-                            None => {
-                                error!("no path for location, ignoring");
-                                None
+                let diff = pathdiff::diff_paths(&path, &last_dir)
+                    .expect("new selection must be relative to the listed directories");
+
+                info!(
+                    "new selection: {:?}, last dir: {:?}, diff: {:?}",
+                    path, last_dir, diff
+                );
+
+                for component in diff.components() {
+                    match component {
+                        Component::ParentDir => {
+                            self.directories.pop();
+                            last_dir.pop();
+                        }
+                        Component::Normal(name) => {
+                            let component_path = last_dir.join(name);
+                            if component_path.is_dir() {
+                                self.directories.push(Directory::new(&component_path));
+                                last_dir = component_path;
                             }
                         }
+                        _ => todo!(),
                     }
-                },
-                gtk::ScrolledWindow {
-                    #[name="file_panes"]
-                    FilePanes(self.model.selected_path.clone()),
-                },
-            },
-            delete_event(_, _) => (Msg::Quit, Inhibit(false)),
+                }
+            }
+        }
+
+        true
+    }
+}
+
+#[relm4_macros::widget(pub)]
+impl Widgets<AppModel, ()> for AppWidgets {
+    view! {
+        gtk::ApplicationWindow {
+            set_title: Some("fm"),
+            set_child = Some(&libpanel::Paned) {
+                factory!(model.directories),
+            }
         }
     }
 }
