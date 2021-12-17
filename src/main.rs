@@ -1,22 +1,36 @@
-use std::io;
+use std::fs;
 use std::path::PathBuf;
 
-use argh::FromArgs;
-use relm::Widget;
+use anyhow::Result;
+use clap::Parser;
+use log::*;
+use relm4::{gtk, RelmApp};
 
-use fm::Win;
+use fm::AppModel;
 
-/// File manager.
-#[derive(FromArgs)]
+/// A paned file manager with automatic preview.
+#[derive(Parser, Debug)]
+#[clap(about, version, author)]
 struct Args {
-    /// directory to open.
-    #[argh(positional)]
-    dir: PathBuf,
+    /// The file or directory to open.
+    #[clap(default_value = ".")]
+    file: PathBuf,
 }
 
-fn main() -> Result<(), io::Error> {
+fn main() -> Result<()> {
     env_logger::init();
-    let args: Args = argh::from_env();
-    Win::run(args.dir.canonicalize()?).unwrap();
+
+    let args = Args::parse();
+    info!("running with arguments: {:?}", args);
+
+    // Call `gtk::init` manually because we instantiate GTK types in the app model.
+    gtk::init().unwrap();
+
+    let model = AppModel::new(&fs::canonicalize(args.file)?);
+    let app = RelmApp::new(model);
+    app.run();
+
+    info!("main loop exited");
+
     Ok(())
 }
