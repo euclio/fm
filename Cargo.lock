@@ -704,6 +704,7 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 [[package]]
 name = "relm4"
 version = "0.4.0-beta.2"
+source = "git+https://github.com/euclio/relm4?branch=libpanel#19930a1ecddd2ea7b9fa722361ca3ddbe00952cc"
 dependencies = [
  "fragile",
  "futures-core",

@@ -9,7 +9,7 @@ gio = "0.14.8"
 libpanel = { git = "https://gitlab.gnome.org/euclio/libpanel-rs.git", branch = "fm" }
 log = "0.4.14"
 pathdiff = "0.2.1"
-relm4 = { path = "../relm4", features = ["libpanel"] }
+relm4 = { git = "https://github.com/euclio/relm4", branch = "libpanel", features = ["libpanel"] }
 relm4-macros = "0.4.0-beta.2"
 
 [patch."https://github.com/gtk-rs/gtk-rs-core"]
