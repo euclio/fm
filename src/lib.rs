@@ -1,25 +1,27 @@
 use std::path::{Component, Path, PathBuf};
 
 use log::*;
-use relm4::factory::FactoryVec;
+use relm4::factory::FactoryVecDeque;
 use relm4::gtk::prelude::*;
-use relm4::{gtk, AppUpdate, Model, Sender, Widgets};
+use relm4::{gtk, AppUpdate, Model, RelmComponent, Sender, Widgets};
 
 mod directory_list;
+mod file_preview;
 
 use directory_list::Directory;
+use file_preview::FilePreviewModel;
 
 pub struct AppModel {
-    directories: FactoryVec<Directory>,
+    directories: FactoryVecDeque<Directory>,
 }
 
 impl AppModel {
     pub fn new(root: &Path) -> AppModel {
         let mut model = AppModel {
-            directories: FactoryVec::new(),
+            directories: FactoryVecDeque::new(),
         };
 
-        model.directories.push(Directory::new(&root));
+        model.directories.push_back(Directory::new(&root));
 
         model
     }
@@ -27,8 +29,7 @@ impl AppModel {
     /// Returns the deepest directory that is listed (the rightmost listing).
     pub fn last_dir(&self) -> PathBuf {
         self.directories
-            .as_slice()
-            .last()
+            .get(self.directories.len() - 1)
             .expect("there must be at least one directory listed")
             .dir()
     }
@@ -42,11 +43,11 @@ pub enum AppMsg {
 impl Model for AppModel {
     type Msg = AppMsg;
     type Widgets = AppWidgets;
-    type Components = ();
+    type Components = AppComponents;
 }
 
 impl AppUpdate for AppModel {
-    fn update(&mut self, msg: AppMsg, _components: &(), _sender: Sender<AppMsg>) -> bool {
+    fn update(&mut self, msg: AppMsg, components: &AppComponents, _sender: Sender<AppMsg>) -> bool {
         match msg {
             AppMsg::NewSelection(path) => {
                 let mut last_dir = self.last_dir();
@@ -62,17 +63,17 @@ impl AppUpdate for AppModel {
                 for component in diff.components() {
                     match component {
                         Component::ParentDir => {
-                            self.directories.pop();
+                            self.directories.pop_back();
                             last_dir.pop();
                         }
                         Component::Normal(name) => {
                             let component_path = last_dir.join(name);
                             if component_path.is_dir() {
-                                self.directories.push(Directory::new(&component_path));
+                                self.directories.push_back(Directory::new(&component_path));
                                 last_dir = component_path;
                             }
                         }
-                        _ => todo!(),
+                        _ => unreachable!("unexpected path component: {:?}", component),
                     }
                 }
             }
@@ -82,13 +83,21 @@ impl AppUpdate for AppModel {
     }
 }
 
+#[derive(relm4_macros::Components)]
+pub struct AppComponents {
+    file_preview: RelmComponent<FilePreviewModel, AppModel>,
+}
+
 #[relm4_macros::widget(pub)]
 impl Widgets<AppModel, ()> for AppWidgets {
     view! {
         gtk::ApplicationWindow {
             set_title: Some("fm"),
             set_child = Some(&libpanel::Paned) {
-                factory!(model.directories),
+                append = &libpanel::Paned {
+                    factory!(model.directories),
+                    append: components.file_preview.root_widget(),
+                },
             }
         }
     }

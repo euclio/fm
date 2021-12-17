@@ -1,13 +1,20 @@
 //! Factory widget that displays a listing of the contents of a directory.
 
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use libpanel::prelude::*;
-use relm4::factory::{FactoryPrototype, FactoryVec};
-use relm4::gtk::glib;
+use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
+use relm4::gtk::{glib, pango};
 use relm4::{gtk, Sender};
 
 use super::AppMsg;
+
+/// The requested minimum width of the widget.
+const WIDTH: i32 = 200;
+
+/// The spacing between elements of a list item.
+const SPACING: i32 = 2;
 
 pub struct Directory {
     store: gtk::DirectoryList,
@@ -37,22 +44,21 @@ pub struct FactoryWidgets {
 }
 
 impl FactoryPrototype for Directory {
-    type Factory = FactoryVec<Self>;
+    type Factory = FactoryVecDeque<Self>;
     type Widgets = FactoryWidgets;
     type Root = gtk::ScrolledWindow;
     type View = libpanel::Paned;
     type Msg = AppMsg;
 
-    fn generate(&self, _index: &usize, sender: Sender<AppMsg>) -> FactoryWidgets {
-        let scroller = gtk::ScrolledWindow::builder()
-            .build();
+    fn generate(&self, _index: &Rc<DynamicIndex>, sender: Sender<AppMsg>) -> FactoryWidgets {
+        let scroller = gtk::ScrolledWindow::builder().width_request(WIDTH).build();
 
         let factory = gtk::SignalListItemFactory::new();
         factory.connect_setup(move |_, list_item| {
             let root = gtk::Box::builder()
                 .orientation(gtk::Orientation::Horizontal)
                 .hexpand(true)
-                .spacing(2)
+                .spacing(SPACING)
                 .build();
 
             let list_item_expression = gtk::ConstantExpression::new(list_item);
@@ -81,7 +87,9 @@ impl FactoryPrototype for Directory {
             );
             icon_expression.bind(&icon_image, "gicon", Some(&icon_image));
 
-            let file_name_label = gtk::Label::new(None);
+            let file_name_label = gtk::Label::builder()
+                .ellipsize(pango::EllipsizeMode::Middle)
+                .build();
             root.append(&file_name_label);
             let display_name_expression = gtk::ClosureExpression::new(
                 |args| {
@@ -143,9 +151,9 @@ impl FactoryPrototype for Directory {
         FactoryWidgets { root: scroller }
     }
 
-    fn position(&self, _index: &usize) {}
+    fn position(&self, _index: &Rc<DynamicIndex>) {}
 
-    fn update(&self, _index: &usize, _widgets: &FactoryWidgets) {}
+    fn update(&self, _index: &Rc<DynamicIndex>, _widgets: &FactoryWidgets) {}
 
     fn get_root(widgets: &FactoryWidgets) -> &gtk::ScrolledWindow {
         &widgets.root
