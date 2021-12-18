@@ -1,4 +1,3 @@
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -22,10 +21,9 @@ fn main() -> Result<()> {
     env_logger::init();
 
     let args = Args::parse();
-
     info!("running with arguments: {:?}", args);
 
-    // Call `gtk::init` manually because we instantiate GTK types in our model.
+    // Call `gtk::init` manually because we instantiate GTK types in the app model.
     gtk::init().unwrap();
 
     let model = AppModel::new(&fs::canonicalize(args.file)?);

@@ -3,13 +3,13 @@ use std::path::{Component, Path, PathBuf};
 use log::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::gtk::prelude::*;
-use relm4::{gtk, AppUpdate, Model, RelmComponent, Sender, Widgets};
+use relm4::{gtk, AppUpdate, Model, RelmComponent, Sender, send, Widgets};
 
 mod directory_list;
 mod file_preview;
 
 use directory_list::Directory;
-use file_preview::FilePreviewModel;
+use file_preview::{FilePreviewMsg, FilePreviewModel};
 
 pub struct AppModel {
     directories: FactoryVecDeque<Directory>,
@@ -76,6 +76,9 @@ impl AppUpdate for AppModel {
                         _ => unreachable!("unexpected path component: {:?}", component),
                     }
                 }
+
+                let file_preview = &components.file_preview;
+                send!(file_preview, FilePreviewMsg::NewSelection(path.clone()));
             }
         }
 
