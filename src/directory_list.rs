@@ -16,6 +16,7 @@ const WIDTH: i32 = 200;
 /// The spacing between elements of a list item.
 const SPACING: i32 = 2;
 
+#[derive(Debug)]
 pub struct Directory {
     store: gtk::DirectoryList,
 }

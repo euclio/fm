@@ -11,6 +11,7 @@ mod file_preview;
 use directory_list::Directory;
 use file_preview::{FilePreviewMsg, FilePreviewModel};
 
+#[derive(Debug)]
 pub struct AppModel {
     directories: FactoryVecDeque<Directory>,
 }

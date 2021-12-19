@@ -30,5 +30,7 @@ fn main() -> Result<()> {
     let app = RelmApp::new(model);
     app.run();
 
+    info!("main loop exited");
+
     Ok(())
 }
