@@ -11,9 +11,10 @@ env_logger = "0.9.0"
 gio = "0.14.8"
 libpanel = { git = "https://gitlab.gnome.org/euclio/libpanel-rs.git", branch = "fm" }
 log = "0.4.14"
+mime = "0.3.16"
 pathdiff = "0.2.1"
-relm4 = { git = "https://github.com/euclio/relm4", branch = "libpanel", features = ["libpanel"] }
-relm4-macros = "0.4.0-beta.2"
+relm4 = { git = "https://github.com/euclio/relm4", branch = "fm", features = ["libpanel"] }
+relm4-macros = { git = "https://github.com/euclio/relm4", branch = "fm" }
 
 [patch."https://github.com/gtk-rs/gtk-rs-core"]
 gio = "0.14.8"

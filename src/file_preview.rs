@@ -1,14 +1,27 @@
 use std::path::PathBuf;
 
+use log::*;
+use mime::Mime;
 use relm4::gtk::prelude::*;
 use relm4::{gtk, ComponentUpdate, Sender, Widgets};
 
 use super::{AppModel, AppMsg, Model};
 
+#[derive(Debug)]
+enum FilePreview {
+    Image(PathBuf),
+    Icon(gio::Icon),
+}
+
+#[derive(Debug)]
+struct FileInfo {
+    path: PathBuf,
+    preview: FilePreview,
+}
+
+#[derive(Debug)]
 pub struct FilePreviewModel {
-    path: Option<PathBuf>,
-    name: Option<String>,
-    icon: Option<gio::Icon>,
+    file: Option<FileInfo>,
 }
 
 impl Model for FilePreviewModel {
@@ -19,11 +32,7 @@ impl Model for FilePreviewModel {
 
 impl ComponentUpdate<AppModel> for FilePreviewModel {
     fn init_model(_parent_model: &AppModel) -> Self {
-        FilePreviewModel {
-            name: None,
-            path: None,
-            icon: None,
-        }
+        FilePreviewModel { file: None }
     }
 
     fn update(
@@ -33,29 +42,33 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
         _sender: Sender<FilePreviewMsg>,
         _parent_sender: Sender<AppMsg>,
     ) {
-        match msg {
-            FilePreviewMsg::NewSelection(path) if path.is_dir() => {
-                self.path = None;
-                self.name = None;
-                self.icon = None;
-            }
+        info!("received message: {:?}", msg);
+
+        self.file = match msg {
+            FilePreviewMsg::NewSelection(path) if path.is_dir() => None,
             FilePreviewMsg::NewSelection(path) => {
-                self.name = path.file_name().map(|name| name.to_string_lossy().to_string());
+                let (content_type, uncertain) =
+                    gio::content_type_guess(Some(&path.to_string_lossy()), &[]);
 
-                let (content_type, uncertain) = gio::content_type_guess(
-                    Some(&path.to_string_lossy()),
-                    &[],
-                );
-                let mime = gio::content_type_get_mime_type(&content_type).unwrap();
+                let mime = gio::content_type_get_mime_type(&content_type)
+                    .expect("unable to determine mime type")
+                    .parse::<Mime>()
+                    .expect("could not parse guessed mime type");
 
-                self.icon = Some(gio::content_type_get_icon(&content_type));
+                info!("identified file as {}, uncertain: {}", mime, uncertain);
 
-                self.path = Some(path);
+                let preview = match (mime.type_(), mime.subtype()) {
+                    (mime::IMAGE, _) => FilePreview::Image(path.clone()),
+                    _ => FilePreview::Icon(gio::content_type_get_icon(&content_type)),
+                };
+
+                Some(FileInfo { path, preview })
             }
         }
     }
 }
 
+#[derive(Debug)]
 pub enum FilePreviewMsg {
     NewSelection(PathBuf),
 }
@@ -67,10 +80,8 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
             set_baseline_position: gtk::BaselinePosition::Center,
             set_orientation: gtk::Orientation::Vertical,
             set_valign: gtk::Align::Center,
-            append = &gtk::Image {
-                set_visible: watch! { model.name.is_some() },
-                set_file: watch! { model.path.as_ref().map(|p| p.to_string_lossy()).as_deref() },
-                set_gicon: watch! { model.icon.as_ref() },
+            set_visible: watch! { model.file.is_some() },
+            append: image = &gtk::Image {
                 set_icon_size: gtk::IconSize::Large,
             },
             append = &gtk::ScrolledWindow {
@@ -81,7 +92,32 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
                 }
             },
             append = &gtk::Label {
-                set_label: watch! { model.name.as_deref().unwrap_or("") },
+                set_label?: watch! {
+                    &model.file.as_ref()
+                        .and_then(|file| file.path.file_name())
+                        .map(|name| name.to_string_lossy())
+                },
+            }
+        }
+    }
+
+    fn manual_view(&self) {
+        let file = match &model.file {
+            Some(file) => file,
+            None => {
+                self.image.set_visible(false);
+                return;
+            }
+        };
+
+        self.image.set_visible(true);
+
+        match &file.preview {
+            FilePreview::Image(path) => {
+                self.image.set_file(Some(&path.to_string_lossy()));
+            }
+            FilePreview::Icon(icon) => {
+                self.image.set_gicon(Some(icon));
             }
         }
     }

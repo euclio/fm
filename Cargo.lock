@@ -157,6 +157,7 @@ dependencies = [
  "gio",
  "libpanel",
  "log",
+ "mime",
  "pathdiff",
  "relm4",
  "relm4-macros",
@@ -623,6 +624,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mime"
+version = "0.3.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
+
+[[package]]
 name = "once_cell"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -767,7 +774,7 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 [[package]]
 name = "relm4"
 version = "0.4.0-beta.2"
-source = "git+https://github.com/euclio/relm4?branch=libpanel#19930a1ecddd2ea7b9fa722361ca3ddbe00952cc"
+source = "git+https://github.com/euclio/relm4?branch=fm#7712c65c1c90303d392f471f98f663a745fafeab"
 dependencies = [
  "fragile",
  "futures-core",
@@ -780,8 +787,7 @@ dependencies = [
 [[package]]
 name = "relm4-macros"
 version = "0.4.0-beta.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "105eaf56cdc635c8a7d84ff4a8a75160b85da55e9210da994d8e986e0e867cf1"
+source = "git+https://github.com/euclio/relm4?branch=fm#7712c65c1c90303d392f471f98f663a745fafeab"
 dependencies = [
  "proc-macro2",
  "quote",

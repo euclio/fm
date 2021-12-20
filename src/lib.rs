@@ -3,13 +3,13 @@ use std::path::{Component, Path, PathBuf};
 use log::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::gtk::prelude::*;
-use relm4::{gtk, AppUpdate, Model, RelmComponent, Sender, send, Widgets};
+use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
 
 mod directory_list;
 mod file_preview;
 
 use directory_list::Directory;
-use file_preview::{FilePreviewMsg, FilePreviewModel};
+use file_preview::{FilePreviewModel, FilePreviewMsg};
 
 #[derive(Debug)]
 pub struct AppModel {
