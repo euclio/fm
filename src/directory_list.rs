@@ -126,15 +126,33 @@ impl FactoryPrototype for Directory {
             list_item.set_child(Some(&root));
         });
 
-        let selection_model = gtk::SingleSelection::builder()
-            .model(&self.store)
+        let file_sorter = gtk::CustomSorter::new(move |a, b| {
+            let a = a.downcast_ref::<gio::FileInfo>().unwrap();
+            let b = b.downcast_ref::<gio::FileInfo>().unwrap();
+
+            a.display_name()
+                .to_lowercase()
+                .cmp(&b.display_name().to_lowercase())
+                .into()
+        });
+        let model = gtk::SortListModel::new(Some(&self.store), Some(&file_sorter));
+
+        let model = gtk::SingleSelection::builder()
+            .model(&model)
             .autoselect(false)
             .build();
-        selection_model.connect_selection_changed(move |selection, _, _| {
+        model.connect_selection_changed(move |selection, _, _| {
             if let Some(item) = selection.selected_item() {
                 let file_info = item.downcast::<gio::FileInfo>().unwrap();
 
-                let directory_list = selection.model().downcast::<gtk::DirectoryList>().unwrap();
+                let directory_list = selection
+                    .model()
+                    .downcast::<gtk::SortListModel>()
+                    .unwrap()
+                    .model()
+                    .unwrap()
+                    .downcast::<gtk::DirectoryList>()
+                    .unwrap();
                 let dir = directory_list.file().and_then(|f| f.path()).unwrap();
 
                 sender
@@ -145,7 +163,7 @@ impl FactoryPrototype for Directory {
 
         let list_view = gtk::ListView::builder()
             .factory(&factory)
-            .model(&selection_model)
+            .model(&model)
             .build();
         scroller.set_child(Some(&list_view));
 
