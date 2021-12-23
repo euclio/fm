@@ -170,8 +170,11 @@ fn read_start_of_file(path: &Path) -> io::Result<Vec<u8>> {
 ///
 /// The definition of "reasonably" is intentionally left vague...
 fn is_plain_text(mime: &Mime) -> bool {
-    match (mime.type_(), mime.subtype()) {
-        (mime::TEXT, _) => true,
+    #[allow(clippy::match_like_matches_macro)]
+    match (mime.type_().as_str(), mime.subtype().as_str()) {
+        ("text", _) => true,
+        ("application", "toml") => true,
+        ("application", "x-shellscript") => true,
         _ => false,
     }
 }
