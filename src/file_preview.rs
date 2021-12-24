@@ -3,7 +3,10 @@
 use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
+use chrono::{DateTime, Local};
+use humansize::{file_size_opts::DECIMAL, FileSize};
 use log::*;
 use mime::Mime;
 use relm4::gtk::prelude::*;
@@ -30,6 +33,10 @@ enum FilePreview {
 #[derive(Debug)]
 struct FileInfo {
     path: PathBuf,
+    mime: Mime,
+    size: u64,
+    created: SystemTime,
+    modified: SystemTime,
     preview: FilePreview,
 }
 
@@ -84,7 +91,29 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
                     _ => FilePreview::Icon(gio::content_type_get_icon(&content_type)),
                 };
 
-                Some(FileInfo { path, preview })
+                let (size, created, modified) = (|| -> io::Result<_> {
+                    // Fall back to symlink_metadata to handle broken symlinks.
+                    let metadata = path.metadata().or_else(|_| path.symlink_metadata())?;
+
+                    let size = metadata.len();
+                    let created = metadata.created()?;
+                    let modified = metadata.modified()?;
+
+                    Ok((size, created, modified))
+                })()
+                .unwrap_or_else(|e| {
+                    info!("unable to read metadata: {}", e);
+                    (0, SystemTime::UNIX_EPOCH, SystemTime::UNIX_EPOCH)
+                });
+
+                Some(FileInfo {
+                    path,
+                    mime,
+                    preview,
+                    size,
+                    created,
+                    modified,
+                })
             }
         }
     }
@@ -117,11 +146,39 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
                     set_editable: false,
                 }
             },
-            append = &gtk::Label {
-                set_label?: watch! {
-                    &model.file.as_ref()
-                        .and_then(|file| file.path.file_name())
-                        .map(|name| name.to_string_lossy())
+            append = &gtk::Grid {
+                add_css_class: "file-preview",
+                attach(0, 0, 2, 1): file_name = &gtk::Label {
+                    add_css_class: "file-name",
+                    set_hexpand: true,
+                    set_halign: gtk::Align::Start,
+                },
+                attach(0, 1, 2, 1): file_type = &gtk::Label {
+                    add_css_class: iterate!(["file-type", "dim-label"]),
+                    set_halign: gtk::Align::Start,
+                },
+                attach(0, 2, 2, 1) = &gtk::Label {
+                    set_label: "Information",
+                    add_css_class: "section-title",
+                    set_halign: gtk::Align::Start,
+                },
+                attach(0, 3, 1, 1) = &gtk::Label {
+                    set_label: "Created",
+                    add_css_class: iterate!(["info-name", "dim-label"]),
+                    set_halign: gtk::Align::Start,
+                },
+                attach(1, 3, 1, 1): created = &gtk::Label {
+                    add_css_class: "info-value",
+                    set_halign: gtk::Align::End,
+                },
+                attach(0, 4, 1, 1) = &gtk::Label {
+                    set_label: "Modified",
+                    add_css_class: iterate!(["info-name", "dim-label"]),
+                    set_halign: gtk::Align::Start,
+                },
+                attach(1, 4, 1, 1): modified = &gtk::Label {
+                    add_css_class: "info-value",
+                    set_halign: gtk::Align::End,
                 },
             }
         }
@@ -132,6 +189,21 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
             Some(file) => file,
             None => return,
         };
+
+        self.file_name.set_text(
+            &file
+                .path
+                .file_name()
+                .expect("file must have a name")
+                .to_string_lossy(),
+        );
+        self.file_type.set_text(&format!(
+            "{} — {}",
+            file.mime,
+            file.size.file_size(DECIMAL).unwrap(),
+        ));
+        self.created.set_text(&format_system_time(file.created));
+        self.modified.set_text(&format_system_time(file.modified));
 
         self.picture.set_visible(false);
         self.image.set_visible(false);
@@ -177,4 +249,10 @@ fn is_plain_text(mime: &Mime) -> bool {
         ("application", "x-shellscript") => true,
         _ => false,
     }
+}
+
+/// Formats a `SystemTime` as a human-readable date string.
+fn format_system_time(time: SystemTime) -> String {
+    let datetime: DateTime<Local> = time.into();
+    datetime.format("%A, %B %-d, %Y at %-I:%M %p").to_string()
 }

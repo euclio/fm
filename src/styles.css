@@ -1,0 +1,11 @@
+.file-preview {
+  margin: 1em;
+}
+
+.file-preview .file-name {
+  font-weight: bold;
+}
+
+.file-preview .section-title {
+  font-weight: bold;
+}

@@ -27,6 +27,7 @@ fn main() -> Result<()> {
     gtk::init().unwrap();
 
     let model = AppModel::new(&fs::canonicalize(args.file)?);
+    relm4::set_global_css(include_bytes!("styles.css"));
     let app = RelmApp::new(model);
     app.run();
 
