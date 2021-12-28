@@ -176,6 +176,7 @@ dependencies = [
  "pathdiff",
  "relm4",
  "relm4-macros",
+ "sourceview5",
 ]
 
 [[package]]
@@ -878,6 +879,40 @@ name = "smallvec"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ecab6c735a6bb4139c0caafd0cc3635748bbb3acf4550e8138122099251f309"
+
+[[package]]
+name = "sourceview5"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f2f8375300de56f43ef03876a8c6ede4be89ea994b76e0f07e080aeb43c6dc3"
+dependencies = [
+ "bitflags",
+ "gdk-pixbuf",
+ "gdk4",
+ "gio",
+ "glib",
+ "gtk4",
+ "libc",
+ "pango",
+ "sourceview5-sys",
+]
+
+[[package]]
+name = "sourceview5-sys"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1be3031333cb0f2300aa9e57a25b82f9c9c915dce25b81ac703fbe9a4e6e8986"
+dependencies = [
+ "gdk-pixbuf-sys",
+ "gdk4-sys",
+ "gio-sys",
+ "glib-sys",
+ "gobject-sys",
+ "gtk4-sys",
+ "libc",
+ "pango-sys",
+ "system-deps 4.0.0",
+]
 
 [[package]]
 name = "strsim"

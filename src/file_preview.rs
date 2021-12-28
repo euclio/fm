@@ -11,6 +11,8 @@ use log::*;
 use mime::Mime;
 use relm4::gtk::prelude::*;
 use relm4::{gtk, ComponentUpdate, Sender, Widgets};
+use sourceview::prelude::*;
+use sourceview5 as sourceview;
 
 use super::{AppModel, AppMsg, Model};
 
@@ -34,6 +36,7 @@ enum FilePreview {
 struct FileInfo {
     path: PathBuf,
     mime: Mime,
+    language: Option<sourceview::Language>,
     size: u64,
     created: SystemTime,
     modified: SystemTime,
@@ -71,10 +74,15 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
                 // TODO: make async?
                 let contents = read_start_of_file(&path).unwrap_or_default();
 
+                let path_str = path.to_string_lossy();
+
                 // FIXME: gio::content_type_guess doesn't let you pass `None` for `data`, but we
                 // should do this if we're unable to read the file. See gtk-rs/gir#1133.
-                let (content_type, uncertain) =
-                    gio::content_type_guess(Some(&path.to_string_lossy()), &contents);
+                let (content_type, uncertain) = gio::content_type_guess(Some(&path_str), &contents);
+
+                let language = sourceview::LanguageManager::default()
+                    .expect("language manager is not available")
+                    .guess_language(Some(&path_str), Some(&content_type));
 
                 let mime = gio::content_type_get_mime_type(&content_type)
                     .expect("unable to determine mime type")
@@ -108,6 +116,7 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
 
                 Some(FileInfo {
                     path,
+                    language,
                     mime,
                     preview,
                     size,
@@ -128,26 +137,41 @@ pub enum FilePreviewMsg {
 impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
     view! {
         gtk::Box {
+            add_css_class: "file-preview-widget",
             set_baseline_position: gtk::BaselinePosition::Center,
             set_orientation: gtk::Orientation::Vertical,
             set_valign: gtk::Align::Center,
             set_visible: watch! { model.file.is_some() },
-            append: image = &gtk::Image {
-                set_visible: false,
-                set_icon_size: gtk::IconSize::Large,
-            },
-            append: picture = &gtk::Picture {
-                set_visible: false,
-            },
-            append: text_container = &gtk::ScrolledWindow {
-                set_visible: false,
 
-                set_child: text = Some(&gtk::TextView) {
-                    set_editable: false,
-                }
-            },
-            append = &gtk::Grid {
+            append = &gtk::Box {
                 add_css_class: "file-preview",
+                append: image = &gtk::Image {
+                    set_visible: false,
+                    set_hexpand: true,
+                    set_icon_size: gtk::IconSize::Large,
+                },
+                append: picture = &gtk::Picture {
+                    add_css_class: "bordered",
+                    set_visible: false,
+                    set_hexpand: true,
+                },
+                append: text_container = &gtk::ScrolledWindow {
+                    add_css_class: "bordered",
+                    set_hexpand: true,
+                    set_propagate_natural_height: true,
+                    set_visible: false,
+                    set_overflow: gtk::Overflow::Hidden,
+
+                    set_child: text = Some(&sourceview::View) {
+                        add_css_class: "file-preview-source",
+                        set_editable: false,
+                        set_monospace: true,
+                    }
+                },
+            },
+
+            append = &gtk::Grid {
+                add_css_class: "file-preview-info",
                 attach(0, 0, 2, 1): file_name = &gtk::Label {
                     add_css_class: "file-name",
                     set_hexpand: true,
@@ -181,6 +205,17 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
                     set_halign: gtk::Align::End,
                 },
             }
+        }
+    }
+
+    fn post_init(&self) {
+        let buffer = text
+            .buffer()
+            .downcast::<sourceview::Buffer>()
+            .expect("sourceview was not backed by sourceview buffer");
+
+        if let Some(scheme) = &sourceview::StyleSchemeManager::new().scheme("oblivion") {
+            buffer.set_style_scheme(Some(scheme));
         }
     }
 
@@ -221,6 +256,14 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
             FilePreview::Text(text) => {
                 self.text.buffer().set_text(text);
                 self.text_container.set_visible(true);
+
+                let buffer = self
+                    .text
+                    .buffer()
+                    .downcast::<sourceview::Buffer>()
+                    .expect("sourceview was not backed by sourceview buffer");
+
+                buffer.set_language(file.language.as_ref());
             }
         }
     }

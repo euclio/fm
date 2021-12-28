@@ -1,11 +1,29 @@
-.file-preview {
-  margin: 1em;
+.bordered {
+  border-radius: 5px;
+  border: 1px solid;
 }
 
-.file-preview .file-name {
+.file-preview-widget {
+  padding: 1em;
+}
+
+.file-preview {
+  font-size: small;
+  margin: 0 10em;
+}
+
+.file-preview-source {
+  padding: 0.5em;
+}
+
+.file-preview-info {
+  margin-top: 1em;
+}
+
+.file-preview-info .file-name {
   font-weight: bold;
 }
 
-.file-preview .section-title {
+.file-preview-info .section-title {
   font-weight: bold;
 }
