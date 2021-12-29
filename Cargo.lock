@@ -173,6 +173,7 @@ dependencies = [
  "libpanel",
  "log",
  "mime",
+ "once_cell",
  "pathdiff",
  "relm4",
  "relm4-macros",
