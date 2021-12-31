@@ -68,6 +68,9 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
     ) {
         info!("received message: {:?}", msg);
 
+        let FilePreviewMsg::NewSelection(path) = &msg;
+        assert!(path.is_absolute());
+
         self.file = match msg {
             FilePreviewMsg::NewSelection(path) if path.is_dir() => None,
             FilePreviewMsg::NewSelection(path) => {

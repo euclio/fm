@@ -1,7 +1,8 @@
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
 
 use log::*;
-use relm4::factory::FactoryVecDeque;
+use relm4::factory::{DynamicIndex, FactoryVecDeque};
 use relm4::gtk::prelude::*;
 use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
 
@@ -60,7 +61,21 @@ pub enum AppMsg {
     /// - If the new selection is a directory, a new directory listing is pushed onto the listing
     /// stack.
     /// - If the new selection is a file, the preview must be updated.
-    NewSelection(PathBuf),
+    NewSelection {
+        /// The selected directory.
+        selection: PathBuf,
+
+        /// The directory that the selection originated from.
+        src_dir: PathBuf,
+    },
+
+    /// Select the first entry in the next directory over from the current one. This is used when
+    /// pressing the right arrow key on a directory in a directory list, because we don't know the
+    /// path of the first entry in the next directory list. Pressing the left arrow key simply uses
+    /// [`NewSelection`].
+    NextDir(PathBuf),
+
+    PrevDir(PathBuf),
 }
 
 impl Model for AppModel {
@@ -72,15 +87,20 @@ impl Model for AppModel {
 impl AppUpdate for AppModel {
     fn update(&mut self, msg: AppMsg, components: &AppComponents, _sender: Sender<AppMsg>) -> bool {
         match msg {
-            AppMsg::NewSelection(path) => {
+            AppMsg::NewSelection { selection, src_dir } => {
                 let mut last_dir = self.last_dir();
 
-                let diff = pathdiff::diff_paths(&path, &last_dir)
+                // if self.root.starts_with(&path) && path != self.root {
+                //     // Tried to navigate above the root, ignore it.
+                //     return true;
+                // }
+
+                let diff = pathdiff::diff_paths(&selection, &last_dir)
                     .expect("new selection must be relative to the listed directories");
 
                 info!(
                     "new selection: {:?}, last dir: {:?}, diff: {:?}",
-                    path, last_dir, diff
+                    selection, last_dir, diff
                 );
 
                 for component in diff.components() {
@@ -101,7 +121,7 @@ impl AppUpdate for AppModel {
                 }
 
                 let file_preview = &components.file_preview;
-                send!(file_preview, FilePreviewMsg::NewSelection(path));
+                send!(file_preview, FilePreviewMsg::NewSelection(selection));
             }
             AppMsg::NewRoot(new_root) => {
                 info!("new root: {:?}", new_root);
@@ -110,6 +130,20 @@ impl AppUpdate for AppModel {
 
                 self.root = new_root;
                 self.directories.push_back(Directory::new(&self.root));
+            }
+            AppMsg::NextDir(_selected_dir) => {
+                if let Some(next_dir_widget) = self.directories.get_mut(self.directories.len() - 1)
+                {
+                    // Select the first entry in the listing.
+                    next_dir_widget.model.set_selected(0);
+                }
+            }
+            AppMsg::PrevDir(dir) => {
+                // Fake a mutation so that the previous widget takes the focus.
+                let _foo = self.directories.get_mut(self.directories.len() - 1);
+
+                // Fake a mutation so that the previous widget takes the focus.
+                let _bar = self.directories.get_mut(self.directories.len() - 2);
             }
         }
 

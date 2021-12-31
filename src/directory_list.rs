@@ -3,10 +3,13 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use gdk::keys::constants::{Left as LEFT, Right as RIGHT};
+use glib::clone;
 use libpanel::prelude::*;
+use log::*;
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
-use relm4::gtk::{glib, pango};
-use relm4::{gtk, Sender};
+use relm4::gtk::{self, gdk, glib, pango, prelude::*};
+use relm4::{send, Sender};
 
 use super::AppMsg;
 
@@ -18,30 +21,58 @@ const SPACING: i32 = 2;
 
 #[derive(Debug)]
 pub struct Directory {
-    store: gtk::DirectoryList,
+    pub model: gtk::SingleSelection,
 }
 
 impl Directory {
     pub fn new(dir: &Path) -> Self {
         assert!(dir.is_dir());
 
-        Directory {
-            store: gtk::DirectoryList::new(
-                Some("standard::name,standard::display-name,standard::icon,standard::file-type"),
-                Some(&gio::File::for_path(dir)),
-            ),
-        }
+        let model = gtk::DirectoryList::new(
+            Some("standard::name,standard::display-name,standard::icon,standard::file-type"),
+            Some(&gio::File::for_path(dir)),
+        );
+
+        let file_sorter = gtk::CustomSorter::new(move |a, b| {
+            let a = a.downcast_ref::<gio::FileInfo>().unwrap();
+            let b = b.downcast_ref::<gio::FileInfo>().unwrap();
+
+            a.display_name()
+                .to_lowercase()
+                .cmp(&b.display_name().to_lowercase())
+                .into()
+        });
+        let model = gtk::SortListModel::new(Some(&model), Some(&file_sorter));
+
+        let model = gtk::SingleSelection::builder()
+            .model(&model)
+            .autoselect(false)
+            .build();
+
+        Directory { model }
     }
 
     /// Returns the listed directory.
     pub fn dir(&self) -> PathBuf {
-        self.store.file().and_then(|f| f.path()).unwrap()
+        // FIXME: This is nasty, and also duplicated with the code below.
+        self.model
+            .model()
+            .downcast::<gtk::SortListModel>()
+            .unwrap()
+            .model()
+            .unwrap()
+            .downcast::<gtk::DirectoryList>()
+            .unwrap()
+            .file()
+            .and_then(|f| f.path())
+            .unwrap()
     }
 }
 
 #[derive(Debug)]
 pub struct FactoryWidgets {
     root: gtk::ScrolledWindow,
+    list_view: gtk::ListView,
 }
 
 impl FactoryPrototype for Directory {
@@ -125,54 +156,80 @@ impl FactoryPrototype for Directory {
 
             list_item.set_child(Some(&root));
         });
+        let model_sender = sender.clone();
 
-        let file_sorter = gtk::CustomSorter::new(move |a, b| {
-            let a = a.downcast_ref::<gio::FileInfo>().unwrap();
-            let b = b.downcast_ref::<gio::FileInfo>().unwrap();
+        self.model
+            .connect_selection_changed(move |selection, _, _| {
+                if let Some(item) = selection.selected_item() {
+                    let file_info = item.downcast::<gio::FileInfo>().unwrap();
 
-            a.display_name()
-                .to_lowercase()
-                .cmp(&b.display_name().to_lowercase())
-                .into()
-        });
-        let model = gtk::SortListModel::new(Some(&self.store), Some(&file_sorter));
+                    let directory_list = selection
+                        .model()
+                        .downcast::<gtk::SortListModel>()
+                        .unwrap()
+                        .model()
+                        .unwrap()
+                        .downcast::<gtk::DirectoryList>()
+                        .unwrap();
+                    let dir = directory_list.file().and_then(|f| f.path()).unwrap();
 
-        let model = gtk::SingleSelection::builder()
-            .model(&model)
-            .autoselect(false)
-            .build();
-        model.connect_selection_changed(move |selection, _, _| {
-            if let Some(item) = selection.selected_item() {
-                let file_info = item.downcast::<gio::FileInfo>().unwrap();
-
-                let directory_list = selection
-                    .model()
-                    .downcast::<gtk::SortListModel>()
-                    .unwrap()
-                    .model()
-                    .unwrap()
-                    .downcast::<gtk::DirectoryList>()
-                    .unwrap();
-                let dir = directory_list.file().and_then(|f| f.path()).unwrap();
-
-                sender
-                    .send(AppMsg::NewSelection(dir.join(file_info.name())))
-                    .unwrap();
-            }
-        });
+                    send!(
+                        model_sender,
+                        AppMsg::NewSelection {
+                            selection: dir.join(file_info.name()),
+                            src_dir: dir,
+                        }
+                    );
+                }
+            });
 
         let list_view = gtk::ListView::builder()
             .factory(&factory)
-            .model(&model)
+            .model(&self.model)
             .build();
+
+        let event_controller = gtk::EventControllerKey::new();
+        let dir = self.dir();
+        let controller_sender = sender.clone();
+        event_controller.connect_key_pressed(clone!(@weak self.model as model => @default-panic, move |_, key, _, _| {
+            if !matches!(key, LEFT | RIGHT) {
+                return gtk::Inhibit(false);
+            }
+
+            if let Some(item) = model.selected_item() {
+                let file_info = item.downcast::<gio::FileInfo>().unwrap();
+                let path = dir.join(file_info.name());
+
+                match key {
+                    LEFT => {
+                        model.unselect_all();
+                        send!(controller_sender, AppMsg::PrevDir(path));
+                    }
+                    RIGHT if path.is_dir() => {
+                        send!(controller_sender, AppMsg::NextDir(path));
+                    }
+                    _ => (),
+                }
+            }
+
+            gtk::Inhibit(false)
+        }));
+        list_view.add_controller(&event_controller);
+
         scroller.set_child(Some(&list_view));
 
-        FactoryWidgets { root: scroller }
+        FactoryWidgets {
+            root: scroller,
+            list_view,
+        }
     }
 
     fn position(&self, _index: &Rc<DynamicIndex>) {}
 
-    fn update(&self, _index: &Rc<DynamicIndex>, _widgets: &FactoryWidgets) {}
+    fn update(&self, index: &Rc<DynamicIndex>, widgets: &FactoryWidgets) {
+        info!("updating directory list {:?}", &index);
+        widgets.list_view.grab_focus();
+    }
 
     fn get_root(widgets: &FactoryWidgets) -> &gtk::ScrolledWindow {
         &widgets.root
