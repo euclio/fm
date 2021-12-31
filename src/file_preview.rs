@@ -169,6 +169,7 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
 
                     set_child: text = Some(&sourceview::View) {
                         add_css_class: "file-preview-source",
+                        set_cursor_visible: false,
                         set_editable: false,
                         set_monospace: true,
                     }
