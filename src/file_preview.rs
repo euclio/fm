@@ -20,6 +20,12 @@ use super::{AppModel, AppMsg, Model};
 /// contents.
 const PREVIEW_BUFFER_SIZE: usize = 4096;
 
+/// The requested width of the text preview, in pixels.
+const PREVIEW_WIDTH: i32 = 500;
+
+/// The requested height of the text preview, in pixels.
+const PREVIEW_HEIGHT: i32 = 400;
+
 #[derive(Debug)]
 enum FilePreview {
     /// Plain text to be displayed in a [`FilePreviewWidgets::text`].
@@ -139,12 +145,15 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
         gtk::Box {
             add_css_class: "file-preview-widget",
             set_baseline_position: gtk::BaselinePosition::Center,
+            set_halign: gtk::Align::Center,
             set_orientation: gtk::Orientation::Vertical,
             set_valign: gtk::Align::Center,
             set_visible: watch! { model.file.is_some() },
 
             append = &gtk::Box {
                 add_css_class: "file-preview",
+                set_height_request: PREVIEW_HEIGHT,
+                set_width_request: PREVIEW_WIDTH,
                 append: image = &gtk::Image {
                     set_visible: false,
                     set_hexpand: true,
@@ -153,18 +162,18 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
                 append: picture = &gtk::Picture {
                     add_css_class: "bordered",
                     set_visible: false,
-                    set_hexpand: true,
+                    set_can_shrink: true,
+                    set_width_request: PREVIEW_WIDTH,
                 },
                 append: text_container = &gtk::ScrolledWindow {
                     add_css_class: "bordered",
-                    set_hexpand: true,
-                    set_propagate_natural_height: true,
                     set_visible: false,
                     set_overflow: gtk::Overflow::Hidden,
 
                     set_child: text = Some(&sourceview::View) {
                         add_css_class: "file-preview-source",
                         set_editable: false,
+                        set_hexpand: true,
                         set_monospace: true,
                     }
                 },
