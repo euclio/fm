@@ -1,7 +1,6 @@
 //! Factory widget that displays a listing of the contents of a directory.
 
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
 use libpanel::prelude::*;
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
@@ -51,7 +50,7 @@ impl FactoryPrototype for Directory {
     type View = libpanel::Paned;
     type Msg = AppMsg;
 
-    fn generate(&self, _index: &Rc<DynamicIndex>, sender: Sender<AppMsg>) -> FactoryWidgets {
+    fn generate(&self, _index: &DynamicIndex, sender: Sender<AppMsg>) -> FactoryWidgets {
         let scroller = gtk::ScrolledWindow::builder().width_request(WIDTH).build();
 
         let factory = gtk::SignalListItemFactory::new();
@@ -170,9 +169,9 @@ impl FactoryPrototype for Directory {
         FactoryWidgets { root: scroller }
     }
 
-    fn position(&self, _index: &Rc<DynamicIndex>) {}
+    fn position(&self, _index: &DynamicIndex) {}
 
-    fn update(&self, _index: &Rc<DynamicIndex>, _widgets: &FactoryWidgets) {}
+    fn update(&self, _index: &DynamicIndex, _widgets: &FactoryWidgets) {}
 
     fn get_root(widgets: &FactoryWidgets) -> &gtk::ScrolledWindow {
         &widgets.root

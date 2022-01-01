@@ -815,8 +815,8 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
 name = "relm4"
-version = "0.4.0-beta.2"
-source = "git+https://github.com/euclio/relm4?branch=fm#7712c65c1c90303d392f471f98f663a745fafeab"
+version = "0.4.0-beta.3"
+source = "git+https://github.com/euclio/relm4?branch=fm#d60fd4fd110a50c41a5995b7f9d5d01e25f6102b"
 dependencies = [
  "fragile",
  "futures-core",
@@ -828,8 +828,8 @@ dependencies = [
 
 [[package]]
 name = "relm4-macros"
-version = "0.4.0-beta.2"
-source = "git+https://github.com/euclio/relm4?branch=fm#7712c65c1c90303d392f471f98f663a745fafeab"
+version = "0.4.0-beta.3"
+source = "git+https://github.com/euclio/relm4?branch=fm#d60fd4fd110a50c41a5995b7f9d5d01e25f6102b"
 dependencies = [
  "proc-macro2",
  "quote",
