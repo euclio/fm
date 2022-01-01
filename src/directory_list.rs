@@ -3,9 +3,10 @@
 use std::path::{Path, PathBuf};
 
 use libpanel::prelude::*;
+use log::*;
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
 use relm4::gtk::{glib, pango};
-use relm4::{gtk, Sender};
+use relm4::{gtk, send, Sender};
 
 use super::AppMsg;
 
@@ -17,24 +18,38 @@ const SPACING: i32 = 2;
 
 #[derive(Debug)]
 pub struct Directory {
-    store: gtk::DirectoryList,
+    /// The underlying directory list.
+    directory_list: gtk::DirectoryList,
+
+    /// The sorted list model (with a selection) that is displayed in the list view.
+    list_model: gtk::SingleSelection,
 }
 
 impl Directory {
     pub fn new(dir: &Path) -> Self {
         assert!(dir.is_dir());
 
+        let directory_list = gtk::DirectoryList::new(
+            Some("standard::name,standard::display-name,standard::icon,standard::file-type"),
+            Some(&gio::File::for_path(dir)),
+        );
+
+        let list_model = gtk::SortListModel::new(Some(&directory_list), Some(&file_sorter()));
+
+        let list_model = gtk::SingleSelection::builder()
+            .model(&list_model)
+            .autoselect(false)
+            .build();
+
         Directory {
-            store: gtk::DirectoryList::new(
-                Some("standard::name,standard::display-name,standard::icon,standard::file-type"),
-                Some(&gio::File::for_path(dir)),
-            ),
+            directory_list,
+            list_model,
         }
     }
 
     /// Returns the listed directory.
     pub fn dir(&self) -> PathBuf {
-        self.store.file().and_then(|f| f.path()).unwrap()
+        self.directory_list.file().and_then(|f| f.path()).unwrap()
     }
 }
 
@@ -125,45 +140,48 @@ impl FactoryPrototype for Directory {
             list_item.set_child(Some(&root));
         });
 
-        let file_sorter = gtk::CustomSorter::new(move |a, b| {
-            let a = a.downcast_ref::<gio::FileInfo>().unwrap();
-            let b = b.downcast_ref::<gio::FileInfo>().unwrap();
+        self.list_model
+            .connect_selection_changed(move |selection, _, _| {
+                if let Some(item) = selection.selected_item() {
+                    let file_info = item.downcast::<gio::FileInfo>().unwrap();
 
-            a.display_name()
-                .to_lowercase()
-                .cmp(&b.display_name().to_lowercase())
-                .into()
-        });
-        let model = gtk::SortListModel::new(Some(&self.store), Some(&file_sorter));
+                    let directory_list = selection
+                        .model()
+                        .downcast::<gtk::SortListModel>()
+                        .unwrap()
+                        .model()
+                        .unwrap()
+                        .downcast::<gtk::DirectoryList>()
+                        .unwrap();
+                    let dir = directory_list.file().and_then(|f| f.path()).unwrap();
 
-        let model = gtk::SingleSelection::builder()
-            .model(&model)
-            .autoselect(false)
-            .build();
-        model.connect_selection_changed(move |selection, _, _| {
-            if let Some(item) = selection.selected_item() {
-                let file_info = item.downcast::<gio::FileInfo>().unwrap();
-
-                let directory_list = selection
-                    .model()
-                    .downcast::<gtk::SortListModel>()
-                    .unwrap()
-                    .model()
-                    .unwrap()
-                    .downcast::<gtk::DirectoryList>()
-                    .unwrap();
-                let dir = directory_list.file().and_then(|f| f.path()).unwrap();
-
-                sender
-                    .send(AppMsg::NewSelection(dir.join(file_info.name())))
-                    .unwrap();
-            }
-        });
+                    send!(sender, AppMsg::NewSelection(dir.join(file_info.name())));
+                }
+            });
 
         let list_view = gtk::ListView::builder()
             .factory(&factory)
-            .model(&model)
+            .model(&self.list_model)
             .build();
+
+        let dir = self.dir();
+        let list_model = self.list_model.clone();
+        list_view.connect_activate(move |_, pos| {
+            if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(pos) {
+                let file_info = item.downcast::<gio::FileInfo>().unwrap();
+                let path = dir.join(file_info.name());
+                info!("opening {:?} in external application", path);
+
+                if let Err(e) = gio::AppInfo::launch_default_for_uri(
+                    &format!("file://{}", path.display()),
+                    None::<&gio::AppLaunchContext>,
+                ) {
+                    // TODO: Show alert dialog instead of logging.
+                    warn!("could not launch application for {:?}: {}", path, e);
+                }
+            }
+        });
+
         scroller.set_child(Some(&list_view));
 
         FactoryWidgets { root: scroller }
@@ -176,4 +194,18 @@ impl FactoryPrototype for Directory {
     fn get_root(widgets: &FactoryWidgets) -> &gtk::ScrolledWindow {
         &widgets.root
     }
+}
+
+/// Constructs a new sorter used to sort directory entries.
+fn file_sorter() -> gtk::Sorter {
+    gtk::CustomSorter::new(move |a, b| {
+        let a = a.downcast_ref::<gio::FileInfo>().unwrap();
+        let b = b.downcast_ref::<gio::FileInfo>().unwrap();
+
+        a.display_name()
+            .to_lowercase()
+            .cmp(&b.display_name().to_lowercase())
+            .into()
+    })
+    .upcast()
 }
