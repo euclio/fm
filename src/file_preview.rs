@@ -69,6 +69,7 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
         info!("received message: {:?}", msg);
 
         self.file = match msg {
+            FilePreviewMsg::Hide => None,
             FilePreviewMsg::NewSelection(path) if path.is_dir() => None,
             FilePreviewMsg::NewSelection(path) => {
                 // TODO: make async?
@@ -130,7 +131,11 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
 
 #[derive(Debug)]
 pub enum FilePreviewMsg {
+    /// Update the preview to show the contents of a new file.
     NewSelection(PathBuf),
+
+    /// Empty the contents of the preview.
+    Hide,
 }
 
 #[relm4_macros::widget(pub)]

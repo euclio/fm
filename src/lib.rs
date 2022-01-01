@@ -110,6 +110,9 @@ impl AppUpdate for AppModel {
 
                 self.root = new_root;
                 self.directories.push_back(Directory::new(&self.root));
+
+                let file_preview = &components.file_preview;
+                send!(file_preview, FilePreviewMsg::Hide);
             }
         }
 
