@@ -140,6 +140,7 @@ impl FactoryPrototype for Directory {
             list_item.set_child(Some(&root));
         });
 
+        let selection_sender = sender.clone();
         self.list_model
             .connect_selection_changed(move |selection, _, _| {
                 if let Some(item) = selection.selected_item() {
@@ -155,7 +156,10 @@ impl FactoryPrototype for Directory {
                         .unwrap();
                     let dir = directory_list.file().and_then(|f| f.path()).unwrap();
 
-                    send!(sender, AppMsg::NewSelection(dir.join(file_info.name())));
+                    send!(
+                        selection_sender,
+                        AppMsg::NewSelection(dir.join(file_info.name()))
+                    );
                 }
             });
 
@@ -176,8 +180,7 @@ impl FactoryPrototype for Directory {
                     &format!("file://{}", path.display()),
                     None::<&gio::AppLaunchContext>,
                 ) {
-                    // TODO: Show alert dialog instead of logging.
-                    warn!("could not launch application for {:?}: {}", path, e);
+                    send!(sender, AppMsg::Error(e.into()));
                 }
             }
         });

@@ -4,11 +4,14 @@ use log::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::gtk::prelude::*;
 use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
+use relm4_components::ParentWindow;
 
+mod alert;
 mod directory_list;
 mod file_preview;
 mod places_sidebar;
 
+use alert::{AlertModel, AlertMsg};
 use directory_list::Directory;
 use file_preview::{FilePreviewModel, FilePreviewMsg};
 use places_sidebar::PlacesSidebarModel;
@@ -48,6 +51,9 @@ impl AppModel {
 
 #[derive(Debug)]
 pub enum AppMsg {
+    /// Display an arbitrary error in an alert dialog.
+    Error(Box<dyn std::error::Error>),
+
     /// The file root has changed. Existing directory trees are now invalid and must be popped off
     /// the stack.
     NewRoot(PathBuf),
@@ -72,6 +78,15 @@ impl Model for AppModel {
 impl AppUpdate for AppModel {
     fn update(&mut self, msg: AppMsg, components: &AppComponents, _sender: Sender<AppMsg>) -> bool {
         match msg {
+            AppMsg::Error(err) => {
+                let error_alert = &components.error_alert;
+                send!(
+                    error_alert,
+                    AlertMsg::Show {
+                        text: err.to_string()
+                    }
+                );
+            }
             AppMsg::NewSelection(path) => {
                 let mut last_dir = self.last_dir();
 
@@ -122,6 +137,7 @@ impl AppUpdate for AppModel {
 
 #[derive(relm4_macros::Components)]
 pub struct AppComponents {
+    error_alert: RelmComponent<AlertModel, AppModel>,
     file_preview: RelmComponent<FilePreviewModel, AppModel>,
     places_sidebar: RelmComponent<PlacesSidebarModel, AppModel>,
 }
@@ -129,7 +145,7 @@ pub struct AppComponents {
 #[relm4_macros::widget(pub)]
 impl Widgets<AppModel, ()> for AppWidgets {
     view! {
-        gtk::ApplicationWindow {
+        main_window = gtk::ApplicationWindow {
             set_title: Some("fm"),
             set_child = Some(&gtk::Paned) {
                 set_start_child: components.places_sidebar.root_widget(),
@@ -143,5 +159,11 @@ impl Widgets<AppModel, ()> for AppWidgets {
                 set_shrink_start_child: false,
             }
         }
+    }
+}
+
+impl ParentWindow for AppWidgets {
+    fn parent_window(&self) -> Option<gtk::Window> {
+        Some(self.main_window.clone().upcast::<gtk::Window>())
     }
 }
