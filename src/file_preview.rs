@@ -73,13 +73,25 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
             FilePreviewMsg::NewSelection(path) if path.is_dir() => None,
             FilePreviewMsg::NewSelection(path) => {
                 // TODO: make async?
-                let contents = read_start_of_file(&path).unwrap_or_default();
+                let content_type = match gio::File::for_path(&path).query_info(
+                    &gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                    gio::FileQueryInfoFlags::NONE,
+                    None::<&gio::Cancellable>,
+                ) {
+                    Ok(info) => info.content_type().unwrap(),
+                    Err(e) => {
+                        warn!("unable to determine content type: {}", e);
+                        return;
+                    }
+                };
+
+                let contents = if path.is_file() {
+                    read_start_of_file(&path).unwrap_or_default()
+                } else {
+                    Vec::default()
+                };
 
                 let path_str = path.to_string_lossy();
-
-                // FIXME: gio::content_type_guess doesn't let you pass `None` for `data`, but we
-                // should do this if we're unable to read the file. See gtk-rs/gir#1133.
-                let (content_type, uncertain) = gio::content_type_guess(Some(&path_str), &contents);
 
                 let language = sourceview::LanguageManager::default()
                     .expect("language manager is not available")
@@ -90,7 +102,7 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
                     .parse::<Mime>()
                     .expect("could not parse guessed mime type");
 
-                info!("identified file as {}, uncertain: {}", mime, uncertain);
+                info!("identified file as {}", mime);
 
                 let preview = match (mime.type_(), mime.subtype()) {
                     (mime::IMAGE, _) => FilePreview::Image(gio::File::for_path(&path)),
