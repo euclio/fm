@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use libpanel::prelude::*;
 use log::*;
+use glib::clone;
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
-use relm4::gtk::{glib, pango};
+use relm4::gtk::{gdk, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
 
 use super::AppMsg;
@@ -137,6 +138,19 @@ impl FactoryPrototype for Directory {
             );
             directory_icon_expression.bind(&directory_icon, "gicon", Some(&directory_icon));
 
+            let menu = right_click_menu();
+            let click_controller = gtk::GestureClick::builder()
+                .button(3)
+                .build();
+            click_controller.connect_released(clone!(@weak menu, @weak list_item => move |_, _, x, y| {
+                let item = list_item.item();
+                menu.set_pointing_to(&gdk::Rectangle { x: x as i32, y: y as i32, height: 1, width: 1 });
+                menu.popup();
+            }));
+            root.add_controller(&click_controller);
+            menu.set_parent(&root);
+
+
             list_item.set_child(Some(&root));
         });
 
@@ -211,4 +225,14 @@ fn file_sorter() -> gtk::Sorter {
             .into()
     })
     .upcast()
+}
+
+fn right_click_menu() -> gtk::PopoverMenu {
+    let menu = gio::Menu::new();
+
+    menu.append(Some("Open"), None);
+
+    let menu = gtk::PopoverMenu::from_model(Some(&menu));
+    menu.set_has_arrow(false);
+    menu
 }
