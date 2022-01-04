@@ -1,6 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use log::*;
+use relm4::actions::{ActionGroupName, ActionName, RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
 use relm4::gtk::prelude::*;
 use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
@@ -12,7 +13,7 @@ mod file_preview;
 mod places_sidebar;
 
 use alert::{AlertModel, AlertMsg};
-use directory_list::Directory;
+use directory_list::{Directory, Selection};
 use file_preview::{FilePreviewModel, FilePreviewMsg};
 use places_sidebar::PlacesSidebarModel;
 
@@ -66,7 +67,7 @@ pub enum AppMsg {
     /// - If the new selection is a directory, a new directory listing is pushed onto the listing
     /// stack.
     /// - If the new selection is a file, the preview must be updated.
-    NewSelection(PathBuf),
+    NewSelection(Selection),
 }
 
 impl Model for AppModel {
@@ -77,6 +78,8 @@ impl Model for AppModel {
 
 impl AppUpdate for AppModel {
     fn update(&mut self, msg: AppMsg, components: &AppComponents, _sender: Sender<AppMsg>) -> bool {
+        info!("received message: {:?}", msg);
+
         match msg {
             AppMsg::Error(err) => {
                 let error_alert = &components.error_alert;
@@ -87,7 +90,7 @@ impl AppUpdate for AppModel {
                     }
                 );
             }
-            AppMsg::NewSelection(path) => {
+            AppMsg::NewSelection(Selection::File(path)) => {
                 let mut last_dir = self.last_dir();
 
                 let diff = pathdiff::diff_paths(&path, &last_dir)
@@ -117,6 +120,10 @@ impl AppUpdate for AppModel {
 
                 let file_preview = &components.file_preview;
                 send!(file_preview, FilePreviewMsg::NewSelection(path));
+            }
+            AppMsg::NewSelection(Selection::None) => {
+                let file_preview = &components.file_preview;
+                send!(file_preview, FilePreviewMsg::Hide);
             }
             AppMsg::NewRoot(new_root) => {
                 info!("new root: {:?}", new_root);
@@ -160,10 +167,57 @@ impl Widgets<AppModel, ()> for AppWidgets {
             }
         }
     }
+
+    fn manual_view(&mut self) {
+        // Handle the right-click actions from the directory entries.
+        let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
+        group.add_action(RelmAction::<OpenDefaultAction>::new_with_target_value(
+            move |_, uri: String| {
+                let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
+            },
+        ));
+        group.add_action(RelmAction::<TrashFileAction>::new_with_target_value(
+            move |_, uri: String| {
+                let file = gio::File::for_uri(&uri);
+                let _ = file.trash(None::<&gio::Cancellable>);
+            },
+        ));
+
+        let actions = group.into_action_group();
+        self.main_window
+            .insert_action_group("dir-entry", Some(&actions));
+    }
 }
 
 impl ParentWindow for AppWidgets {
     fn parent_window(&self) -> Option<gtk::Window> {
         Some(self.main_window.clone().upcast::<gtk::Window>())
+    }
+}
+
+// FIXME: Move this action group to the directory_list module when we can set its visibility.
+relm4::new_action_group!(DirectoryListRightClickActionGroup, "dir-entry");
+
+struct OpenDefaultAction;
+
+impl ActionName for OpenDefaultAction {
+    type Group = DirectoryListRightClickActionGroup;
+    type Target = String;
+    type State = ();
+
+    fn name() -> &'static str {
+        "open-default"
+    }
+}
+
+struct TrashFileAction;
+
+impl ActionName for TrashFileAction {
+    type Group = DirectoryListRightClickActionGroup;
+    type Target = String;
+    type State = ();
+
+    fn name() -> &'static str {
+        "trash-file"
     }
 }

@@ -5,17 +5,21 @@ use std::path::{Path, PathBuf};
 use glib::clone;
 use libpanel::prelude::*;
 use log::*;
+use relm4::actions::RelmAction;
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
-use relm4::gtk::{glib, pango};
+use relm4::gtk::{gdk, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
 
-use super::AppMsg;
+use super::{AppMsg, OpenDefaultAction, TrashFileAction};
 
 /// The requested minimum width of the widget.
 const WIDTH: i32 = 200;
 
 /// The spacing between elements of a list item.
 const SPACING: i32 = 2;
+
+/// Button number identifying the right click button on a mouse.
+const BUTTON_RIGHT_CLICK: u32 = 3;
 
 #[derive(Debug)]
 pub struct Directory {
@@ -31,7 +35,16 @@ impl Directory {
         assert!(dir.is_dir());
 
         let directory_list = gtk::DirectoryList::new(
-            Some("standard::name,standard::display-name,standard::icon,standard::file-type"),
+            Some(
+                &[
+                    "standard::name",
+                    "standard::display-name",
+                    "standard::icon",
+                    "standard::file-type",
+                    "standard::content-type",
+                ]
+                .join(","),
+            ),
             Some(&gio::File::for_path(dir)),
         );
 
@@ -54,6 +67,16 @@ impl Directory {
     }
 }
 
+/// Used to communicate the file selection status to the parent widget.
+#[derive(Debug)]
+pub enum Selection {
+    /// A single-file selection.
+    File(PathBuf),
+
+    /// No file is selected.
+    None,
+}
+
 #[derive(Debug)]
 pub struct FactoryWidgets {
     root: gtk::ScrolledWindow,
@@ -68,7 +91,13 @@ impl FactoryPrototype for Directory {
 
     fn generate(&self, _index: &DynamicIndex, sender: Sender<AppMsg>) -> FactoryWidgets {
         let factory = gtk::SignalListItemFactory::new();
-        factory.connect_setup(|_, list_item| build_list_item_view(list_item));
+
+        let dir = self.dir();
+        factory.connect_setup(
+            clone!(@weak self.list_model as selection => move |_, list_item| {
+                build_list_item_view(&dir, &selection, list_item);
+            }),
+        );
 
         let sender_ = sender.clone();
         self.list_model
@@ -114,7 +143,7 @@ impl FactoryPrototype for Directory {
 ///
 /// This view displays an icon, the name of the file, and an arrow indicating if the item is a file
 /// or directory.
-fn build_list_item_view(list_item: &gtk::ListItem) {
+fn build_list_item_view(dir: &Path, selection: &gtk::SingleSelection, list_item: &gtk::ListItem) {
     let root = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .hexpand(true)
@@ -182,12 +211,28 @@ fn build_list_item_view(list_item: &gtk::ListItem) {
     );
     directory_icon_expression.bind(&directory_icon, "gicon", Some(&directory_icon));
 
+    let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
+    menu.set_parent(&root);
+    menu.set_has_arrow(false);
+
+    let click_controller = gtk::GestureClick::builder()
+        .button(BUTTON_RIGHT_CLICK)
+        .build();
+    let dir = dir.to_owned();
+    click_controller.connect_released(
+        clone!(@weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
+            let target = gdk::Rectangle { x: x as i32, y: y as i32, height: 1, width: 1 };
+            handle_right_click(&dir, &selection, &list_item, menu, target);
+        }),
+    );
+    root.add_controller(&click_controller);
+
     list_item.set_child(Some(&root));
 }
 
 /// Notifies the main component of the path of a new selection.
 fn send_new_selection(selection: &gtk::SingleSelection, sender: &Sender<AppMsg>) {
-    if let Some(item) = selection.selected_item() {
+    let selection = if let Some(item) = selection.selected_item() {
         let file_info = item.downcast::<gio::FileInfo>().unwrap();
 
         let directory_list = selection
@@ -200,8 +245,67 @@ fn send_new_selection(selection: &gtk::SingleSelection, sender: &Sender<AppMsg>)
             .unwrap();
         let dir = directory_list.file().and_then(|f| f.path()).unwrap();
 
-        send!(sender, AppMsg::NewSelection(dir.join(file_info.name())));
+        Selection::File(dir.join(file_info.name()))
+    } else {
+        Selection::None
+    };
+
+    send!(sender, AppMsg::NewSelection(selection));
+}
+
+/// Handles the right click operation on an individual list item.
+fn handle_right_click(
+    dir: &Path,
+    selection: &gtk::SingleSelection,
+    list_item: &gtk::ListItem,
+    menu: gtk::PopoverMenu,
+    target: gdk::Rectangle,
+) {
+    // If the right-clicked item isn't part of the selection, select it.
+    let position = list_item.position();
+
+    if !list_item.is_selected() {
+        selection.set_selected(position);
     }
+
+    if let Some(item) = list_item.item() {
+        let info = item.downcast_ref::<gio::FileInfo>().unwrap();
+
+        let menu_model = populate_menu_model(info, dir);
+
+        menu.set_menu_model(Some(&menu_model));
+        menu.set_pointing_to(&target);
+        menu.popup();
+    }
+}
+
+/// Constructs a new menu model for the given file info. Used to dynamically populate the menu on
+/// right click.
+fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
+    let uri = format!("file://{}", dir.join(file_info.name()).to_string_lossy());
+
+    let menu_model = gio::Menu::new();
+
+    if let Some(app_info) =
+        gio::AppInfo::default_for_type(&file_info.content_type().unwrap(), false)
+    {
+        let menu_item = RelmAction::<OpenDefaultAction>::to_menu_item_with_target_value(
+            &format!("Open with {}", app_info.display_name()),
+            &uri,
+        );
+
+        if let Some(icon) = &app_info.icon() {
+            menu_item.set_icon(icon);
+        }
+
+        menu_model.append_item(&menu_item);
+    }
+
+    menu_model.append_item(
+        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value("Move to Trash", &uri),
+    );
+
+    menu_model
 }
 
 /// Opens the default application for the given path.
