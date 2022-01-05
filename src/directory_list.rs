@@ -69,6 +69,11 @@ impl FactoryPrototype for Directory {
     fn generate(&self, _index: &DynamicIndex, sender: Sender<AppMsg>) -> FactoryWidgets {
         let scroller = gtk::ScrolledWindow::builder().width_request(WIDTH).build();
 
+        let menu = gio::Menu::new();
+
+        menu.append(Some("_New Window"), None);
+        menu.append(Some("_Open"), None);
+
         let factory = gtk::SignalListItemFactory::new();
         factory.connect_setup(move |_, list_item| {
             let root = gtk::Box::builder()
@@ -138,7 +143,9 @@ impl FactoryPrototype for Directory {
             );
             directory_icon_expression.bind(&directory_icon, "gicon", Some(&directory_icon));
 
-            let menu = right_click_menu();
+            let menu = gtk::PopoverMenu::from_model(Some(&menu));
+            menu.set_has_arrow(false);
+
             let click_controller = gtk::GestureClick::builder()
                 .button(3)
                 .build();
@@ -225,14 +232,4 @@ fn file_sorter() -> gtk::Sorter {
             .into()
     })
     .upcast()
-}
-
-fn right_click_menu() -> gtk::PopoverMenu {
-    let menu = gio::Menu::new();
-
-    menu.append(Some("Open"), None);
-
-    let menu = gtk::PopoverMenu::from_model(Some(&menu));
-    menu.set_has_arrow(false);
-    menu
 }
