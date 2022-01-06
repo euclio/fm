@@ -1,6 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use log::*;
+use relm4::actions::{ActionGroupName, ActionName, RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
 use relm4::gtk::prelude::*;
 use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
@@ -160,6 +161,19 @@ impl Widgets<AppModel, ()> for AppWidgets {
             }
         }
     }
+
+    fn manual_view(&mut self) {
+        let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
+
+        let action: RelmAction<OpenDefaultAction> = RelmAction::new_statelesss(move |_| {
+            println!("action!");
+        });
+        group.add_action(action);
+
+        let actions = group.into_action_group();
+        self.main_window
+            .insert_action_group("dir-entry", Some(&actions));
+    }
 }
 
 impl ParentWindow for AppWidgets {
@@ -167,3 +181,10 @@ impl ParentWindow for AppWidgets {
         Some(self.main_window.clone().upcast::<gtk::Window>())
     }
 }
+
+relm4::new_action_group!(DirectoryListRightClickActionGroup, "dir-entry");
+relm4::new_statless_action!(
+    OpenDefaultAction,
+    DirectoryListRightClickActionGroup,
+    "open-default"
+);

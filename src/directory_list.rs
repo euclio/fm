@@ -5,11 +5,12 @@ use std::path::{Path, PathBuf};
 use glib::clone;
 use libpanel::prelude::*;
 use log::*;
+use relm4::actions::{ActionGroupName, ActionName};
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
 use relm4::gtk::{gdk, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
 
-use super::AppMsg;
+use super::{AppMsg, OpenDefaultAction};
 
 /// The requested minimum width of the widget.
 const WIDTH: i32 = 200;
@@ -168,21 +169,23 @@ impl FactoryPrototype for Directory {
                     if let Some(item) = list_item.item() {
                         let file_info = item.downcast::<gio::FileInfo>().unwrap();
 
-                        let app_info = gio::AppInfo::default_for_type(&file_info.content_type().unwrap(), false).unwrap();
-
                         let menu_model = gio::Menu::new();
 
-                        let open_specific_item = gio::MenuItem::new(
-                            Some(&format!("Open with {}", app_info.display_name())),
-                            None,
-                        );
-                        if let Some(icon) = &app_info.icon() {
-                            open_specific_item.set_icon(icon);
+                        if let Some(app_info) = gio::AppInfo::default_for_type(&file_info.content_type().unwrap(), false) {
+                            // TODO: Send URI as action target in parens?
+                            let menu_item = gio::MenuItem::new(
+                                Some(&format!("Open with {}", app_info.display_name())),
+                                Some(&OpenDefaultAction::action_name())
+                            );
+
+                            if let Some(icon) = &app_info.icon() {
+                                menu_item.set_icon(icon);
+                            }
+
+                            menu_model.append_item(&menu_item);
                         }
 
-                        menu_model.append_item(&open_specific_item);
                         menu_model.append(Some("Open with..."), None);
-                        menu_model.append(Some("Move to Trash"), None);
 
                         menu.set_menu_model(Some(&menu_model));
 
