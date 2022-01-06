@@ -2,9 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
+use glib::clone;
 use libpanel::prelude::*;
 use log::*;
-use glib::clone;
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
 use relm4::gtk::{gdk, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
@@ -16,6 +16,9 @@ const WIDTH: i32 = 200;
 
 /// The spacing between elements of a list item.
 const SPACING: i32 = 2;
+
+/// Button number identifying the right click button on a mouse.
+const BUTTON_RIGHT_CLICK: u32 = 3;
 
 #[derive(Debug)]
 pub struct Directory {
@@ -31,7 +34,16 @@ impl Directory {
         assert!(dir.is_dir());
 
         let directory_list = gtk::DirectoryList::new(
-            Some("standard::name,standard::display-name,standard::icon,standard::file-type"),
+            Some(
+                &[
+                    "standard::name",
+                    "standard::display-name",
+                    "standard::icon",
+                    "standard::file-type",
+                    "standard::content-type",
+                ]
+                .join(","),
+            ),
             Some(&gio::File::for_path(dir)),
         );
 
@@ -69,13 +81,8 @@ impl FactoryPrototype for Directory {
     fn generate(&self, _index: &DynamicIndex, sender: Sender<AppMsg>) -> FactoryWidgets {
         let scroller = gtk::ScrolledWindow::builder().width_request(WIDTH).build();
 
-        let menu = gio::Menu::new();
-
-        menu.append(Some("_New Window"), None);
-        menu.append(Some("_Open"), None);
-
         let factory = gtk::SignalListItemFactory::new();
-        factory.connect_setup(move |_, list_item| {
+        factory.connect_setup(clone!(@weak self.list_model as model => move |_, list_item| {
             let root = gtk::Box::builder()
                 .orientation(gtk::Orientation::Horizontal)
                 .hexpand(true)
@@ -143,23 +150,57 @@ impl FactoryPrototype for Directory {
             );
             directory_icon_expression.bind(&directory_icon, "gicon", Some(&directory_icon));
 
-            let menu = gtk::PopoverMenu::from_model(Some(&menu));
+            let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
+            menu.set_parent(&root);
             menu.set_has_arrow(false);
 
             let click_controller = gtk::GestureClick::builder()
-                .button(3)
+                .button(BUTTON_RIGHT_CLICK)
                 .build();
-            click_controller.connect_released(clone!(@weak menu, @weak list_item => move |_, _, x, y| {
-                let item = list_item.item();
-                menu.set_pointing_to(&gdk::Rectangle { x: x as i32, y: y as i32, height: 1, width: 1 });
-                menu.popup();
-            }));
-            root.add_controller(&click_controller);
-            menu.set_parent(&root);
+            click_controller.connect_released(
+                clone!(@weak model, @weak list_item => move |_, _, x, y| {
+                    let position = list_item.position();
 
+                    if !model.is_selected(position) {
+                        model.set_selected(position);
+                    }
+
+                    if let Some(item) = list_item.item() {
+                        let file_info = item.downcast::<gio::FileInfo>().unwrap();
+
+                        let app_info = gio::AppInfo::default_for_type(&file_info.content_type().unwrap(), false).unwrap();
+
+                        let menu_model = gio::Menu::new();
+
+                        let open_specific_item = gio::MenuItem::new(
+                            Some(&format!("Open with {}", app_info.display_name())),
+                            None,
+                        );
+                        if let Some(icon) = &app_info.icon() {
+                            open_specific_item.set_icon(icon);
+                        }
+
+                        menu_model.append_item(&open_specific_item);
+                        menu_model.append(Some("Open with..."), None);
+                        menu_model.append(Some("Move to Trash"), None);
+
+                        menu.set_menu_model(Some(&menu_model));
+
+                        menu.set_pointing_to(&gdk::Rectangle {
+                            x: x as i32,
+                            y: y as i32,
+                            height: 1,
+                            width: 1,
+                        });
+
+                        menu.popup();
+                    }
+                }),
+            );
+            root.add_controller(&click_controller);
 
             list_item.set_child(Some(&root));
-        });
+        }));
 
         let selection_sender = sender.clone();
         self.list_model
