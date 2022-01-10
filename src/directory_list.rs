@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use glib::clone;
 use libpanel::prelude::*;
 use log::*;
-use relm4::actions::{ActionGroupName, ActionName};
+use relm4::actions::RelmAction;
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
 use relm4::gtk::{gdk, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
 
-use super::{AppMsg, OpenDefaultAction};
+use super::{AppMsg, OpenDefaultAction, TrashFileAction};
 
 /// The requested minimum width of the widget.
 const WIDTH: i32 = 200;
@@ -67,6 +67,16 @@ impl Directory {
     }
 }
 
+/// Used to communicate the file selection status to the parent widget.
+#[derive(Debug)]
+pub enum Selection {
+    /// A single-file selection.
+    File(PathBuf),
+
+    /// No file is selected.
+    None,
+}
+
 #[derive(Debug)]
 pub struct FactoryWidgets {
     root: gtk::ScrolledWindow,
@@ -81,6 +91,8 @@ impl FactoryPrototype for Directory {
 
     fn generate(&self, _index: &DynamicIndex, sender: Sender<AppMsg>) -> FactoryWidgets {
         let scroller = gtk::ScrolledWindow::builder().width_request(WIDTH).build();
+
+        let dir = self.dir();
 
         let factory = gtk::SignalListItemFactory::new();
         factory.connect_setup(clone!(@weak self.list_model as model => move |_, list_item| {
@@ -158,6 +170,7 @@ impl FactoryPrototype for Directory {
             let click_controller = gtk::GestureClick::builder()
                 .button(BUTTON_RIGHT_CLICK)
                 .build();
+            let dir = dir.clone();
             click_controller.connect_released(
                 clone!(@weak model, @weak list_item => move |_, _, x, y| {
                     let position = list_item.position();
@@ -168,14 +181,15 @@ impl FactoryPrototype for Directory {
 
                     if let Some(item) = list_item.item() {
                         let file_info = item.downcast::<gio::FileInfo>().unwrap();
+                        let uri = format!("file://{}", dir.join(file_info.name()).to_string_lossy());
 
                         let menu_model = gio::Menu::new();
 
                         if let Some(app_info) = gio::AppInfo::default_for_type(&file_info.content_type().unwrap(), false) {
-                            // TODO: Send URI as action target in parens?
-                            let menu_item = gio::MenuItem::new(
-                                Some(&format!("Open with {}", app_info.display_name())),
-                                Some(&OpenDefaultAction::action_name())
+
+                            let menu_item = RelmAction::<OpenDefaultAction>::to_menu_item_with_target_value(
+                                &format!("Open with {}", app_info.display_name()),
+                                &uri,
                             );
 
                             if let Some(icon) = &app_info.icon() {
@@ -185,7 +199,10 @@ impl FactoryPrototype for Directory {
                             menu_model.append_item(&menu_item);
                         }
 
-                        menu_model.append(Some("Open with..."), None);
+                        menu_model.append_item(&RelmAction::<TrashFileAction>::to_menu_item_with_target_value(
+                            "Move to Trash",
+                            &uri,
+                        ));
 
                         menu.set_menu_model(Some(&menu_model));
 
@@ -223,8 +240,10 @@ impl FactoryPrototype for Directory {
 
                     send!(
                         selection_sender,
-                        AppMsg::NewSelection(dir.join(file_info.name()))
+                        AppMsg::NewSelection(Selection::File(dir.join(file_info.name())))
                     );
+                } else {
+                    send!(selection_sender, AppMsg::NewSelection(Selection::None));
                 }
             });
 
