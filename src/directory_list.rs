@@ -10,7 +10,8 @@ use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
 use relm4::gtk::{gdk, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
 
-use super::{AppMsg, OpenDefaultAction, TrashFileAction};
+use crate::util::PathBufVariant;
+use crate::{AppMsg, OpenDefaultAction, TrashFileAction};
 
 /// The requested minimum width of the widget.
 const WIDTH: i32 = 200;
@@ -282,7 +283,7 @@ fn handle_right_click(
 /// Constructs a new menu model for the given file info. Used to dynamically populate the menu on
 /// right click.
 fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
-    let uri = format!("file://{}", dir.join(file_info.name()).to_string_lossy());
+    let path = dir.join(file_info.name());
 
     let menu_model = gio::Menu::new();
 
@@ -291,7 +292,7 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
     {
         let menu_item = RelmAction::<OpenDefaultAction>::to_menu_item_with_target_value(
             &format!("Open with {}", app_info.display_name()),
-            &uri,
+            &PathBufVariant(path.clone()),
         );
 
         if let Some(icon) = &app_info.icon() {
@@ -302,7 +303,10 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
     }
 
     menu_model.append_item(
-        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value("Move to Trash", &uri),
+        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value(
+            "Move to Trash",
+            &PathBufVariant(path),
+        ),
     );
 
     menu_model

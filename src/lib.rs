@@ -11,11 +11,13 @@ mod alert;
 mod directory_list;
 mod file_preview;
 mod places_sidebar;
+mod util;
 
-use alert::{AlertModel, AlertMsg};
-use directory_list::{Directory, Selection};
-use file_preview::{FilePreviewModel, FilePreviewMsg};
-use places_sidebar::PlacesSidebarModel;
+use crate::alert::{AlertModel, AlertMsg};
+use crate::directory_list::{Directory, Selection};
+use crate::file_preview::{FilePreviewModel, FilePreviewMsg};
+use crate::places_sidebar::PlacesSidebarModel;
+use crate::util::PathBufVariant;
 
 #[derive(Debug)]
 pub struct AppModel {
@@ -172,13 +174,14 @@ impl Widgets<AppModel, ()> for AppWidgets {
         // Handle the right-click actions from the directory entries.
         let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
         group.add_action(RelmAction::<OpenDefaultAction>::new_with_target_value(
-            move |_, uri: String| {
+            move |_, PathBufVariant(path): PathBufVariant| {
+                let uri = gio::File::for_path(path).uri();
                 let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
             },
         ));
         group.add_action(RelmAction::<TrashFileAction>::new_with_target_value(
-            move |_, uri: String| {
-                let file = gio::File::for_uri(&uri);
+            move |_, PathBufVariant(path): PathBufVariant| {
+                let file = gio::File::for_path(&path);
                 let _ = file.trash(None::<&gio::Cancellable>);
             },
         ));
@@ -202,7 +205,7 @@ struct OpenDefaultAction;
 
 impl ActionName for OpenDefaultAction {
     type Group = DirectoryListRightClickActionGroup;
-    type Target = String;
+    type Target = PathBufVariant;
     type State = ();
 
     fn name() -> &'static str {
@@ -214,7 +217,7 @@ struct TrashFileAction;
 
 impl ActionName for TrashFileAction {
     type Group = DirectoryListRightClickActionGroup;
-    type Target = String;
+    type Target = PathBufVariant;
     type State = ();
 
     fn name() -> &'static str {
