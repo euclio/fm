@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use glib::clone;
 use libpanel::prelude::*;
 use log::*;
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
@@ -66,101 +67,13 @@ impl FactoryPrototype for Directory {
     type Msg = AppMsg;
 
     fn generate(&self, _index: &DynamicIndex, sender: Sender<AppMsg>) -> FactoryWidgets {
-        let scroller = gtk::ScrolledWindow::builder().width_request(WIDTH).build();
-
         let factory = gtk::SignalListItemFactory::new();
-        factory.connect_setup(move |_, list_item| {
-            let root = gtk::Box::builder()
-                .orientation(gtk::Orientation::Horizontal)
-                .hexpand(true)
-                .spacing(SPACING)
-                .build();
+        factory.connect_setup(|_, list_item| build_list_item_view(list_item));
 
-            let list_item_expression = gtk::ConstantExpression::new(list_item);
-            let file_info_expression = gtk::PropertyExpression::new(
-                gtk::ListItem::static_type(),
-                Some(&list_item_expression),
-                "item",
-            );
-
-            fn value_to_file_info(value: &glib::Value) -> Option<gio::FileInfo> {
-                value
-                    .get::<Option<glib::Object>>()
-                    .unwrap()
-                    .map(|obj| obj.downcast::<gio::FileInfo>().unwrap())
-            }
-
-            let icon_image = gtk::Image::new();
-            root.append(&icon_image);
-            let icon_expression = gtk::ClosureExpression::new(
-                |args| {
-                    value_to_file_info(&args[1])
-                        .and_then(|file_info| file_info.icon())
-                        .unwrap_or_else(|| gio::Icon::for_string("text-x-generic").unwrap())
-                },
-                &[file_info_expression.clone().upcast()],
-            );
-            icon_expression.bind(&icon_image, "gicon", Some(&icon_image));
-
-            let file_name_label = gtk::Label::builder()
-                .ellipsize(pango::EllipsizeMode::Middle)
-                .build();
-            root.append(&file_name_label);
-            let display_name_expression = gtk::ClosureExpression::new(
-                |args| {
-                    value_to_file_info(&args[1])
-                        .map(|file_info| file_info.display_name().to_string())
-                        .unwrap_or_default()
-                },
-                &[file_info_expression.clone().upcast()],
-            );
-            display_name_expression.bind(&file_name_label, "label", Some(&file_name_label));
-
-            let directory_icon = gtk::Image::builder()
-                .halign(gtk::Align::End)
-                .hexpand(true)
-                .build();
-            root.append(&directory_icon);
-            let directory_icon_expression = gtk::ClosureExpression::new(
-                |args| {
-                    value_to_file_info(&args[1])
-                        .and_then(|file_info| match file_info.file_type() {
-                            gio::FileType::Directory => {
-                                Some(gio::Icon::for_string("go-next-symbolic").unwrap())
-                            }
-                            _ => None,
-                        })
-                        // FIXME: Remove this unwrap when gtk/gtk-rs-core#419 is released.
-                        .unwrap_or_else(|| gio::Icon::for_string("go-next-symbolic").unwrap())
-                },
-                &[file_info_expression.upcast()],
-            );
-            directory_icon_expression.bind(&directory_icon, "gicon", Some(&directory_icon));
-
-            list_item.set_child(Some(&root));
-        });
-
-        let selection_sender = sender.clone();
+        let sender_ = sender.clone();
         self.list_model
             .connect_selection_changed(move |selection, _, _| {
-                if let Some(item) = selection.selected_item() {
-                    let file_info = item.downcast::<gio::FileInfo>().unwrap();
-
-                    let directory_list = selection
-                        .model()
-                        .downcast::<gtk::SortListModel>()
-                        .unwrap()
-                        .model()
-                        .unwrap()
-                        .downcast::<gtk::DirectoryList>()
-                        .unwrap();
-                    let dir = directory_list.file().and_then(|f| f.path()).unwrap();
-
-                    send!(
-                        selection_sender,
-                        AppMsg::NewSelection(dir.join(file_info.name()))
-                    );
-                }
+                send_new_selection(selection, &sender_);
             });
 
         let list_view = gtk::ListView::builder()
@@ -169,23 +82,21 @@ impl FactoryPrototype for Directory {
             .build();
 
         let dir = self.dir();
-        let list_model = self.list_model.clone();
-        list_view.connect_activate(move |_, pos| {
-            if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(pos) {
-                let file_info = item.downcast::<gio::FileInfo>().unwrap();
-                let path = dir.join(file_info.name());
-                info!("opening {:?} in external application", path);
-
-                if let Err(e) = gio::AppInfo::launch_default_for_uri(
-                    &format!("file://{}", path.display()),
-                    None::<&gio::AppLaunchContext>,
-                ) {
-                    send!(sender, AppMsg::Error(e.into()));
+        let sender_ = sender;
+        list_view.connect_activate(
+            clone!(@weak self.list_model as list_model => move |_, position| {
+                if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
+                    let info = item.downcast_ref::<gio::FileInfo>().unwrap();
+                    let path = dir.join(info.name());
+                    open_application_for_path(&path, &sender_);
                 }
-            }
-        });
+            }),
+        );
 
-        scroller.set_child(Some(&list_view));
+        let scroller = gtk::ScrolledWindow::builder()
+            .width_request(WIDTH)
+            .child(&list_view)
+            .build();
 
         FactoryWidgets { root: scroller }
     }
@@ -196,6 +107,112 @@ impl FactoryPrototype for Directory {
 
     fn get_root(widgets: &FactoryWidgets) -> &gtk::ScrolledWindow {
         &widgets.root
+    }
+}
+
+/// Construct the view for an uninitialized list item, and set it as the item's child.
+///
+/// This view displays an icon, the name of the file, and an arrow indicating if the item is a file
+/// or directory.
+fn build_list_item_view(list_item: &gtk::ListItem) {
+    let root = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .hexpand(true)
+        .spacing(SPACING)
+        .build();
+
+    let list_item_expression = gtk::ConstantExpression::new(list_item);
+    let file_info_expression = gtk::PropertyExpression::new(
+        gtk::ListItem::static_type(),
+        Some(&list_item_expression),
+        "item",
+    );
+
+    fn value_to_file_info(value: &glib::Value) -> Option<gio::FileInfo> {
+        value
+            .get::<Option<glib::Object>>()
+            .unwrap()
+            .map(|obj| obj.downcast::<gio::FileInfo>().unwrap())
+    }
+
+    let icon_image = gtk::Image::new();
+    root.append(&icon_image);
+    let icon_expression = gtk::ClosureExpression::new(
+        |args| {
+            value_to_file_info(&args[1])
+                .and_then(|file_info| file_info.icon())
+                .unwrap_or_else(|| gio::Icon::for_string("text-x-generic").unwrap())
+        },
+        &[file_info_expression.clone().upcast()],
+    );
+    icon_expression.bind(&icon_image, "gicon", Some(&icon_image));
+
+    let file_name_label = gtk::Label::builder()
+        .ellipsize(pango::EllipsizeMode::Middle)
+        .build();
+    root.append(&file_name_label);
+    let display_name_expression = gtk::ClosureExpression::new(
+        |args| {
+            value_to_file_info(&args[1])
+                .map(|file_info| file_info.display_name().to_string())
+                .unwrap_or_default()
+        },
+        &[file_info_expression.clone().upcast()],
+    );
+    display_name_expression.bind(&file_name_label, "label", Some(&file_name_label));
+
+    let directory_icon = gtk::Image::builder()
+        .halign(gtk::Align::End)
+        .hexpand(true)
+        .build();
+    root.append(&directory_icon);
+    let directory_icon_expression = gtk::ClosureExpression::new(
+        |args| {
+            value_to_file_info(&args[1])
+                .and_then(|file_info| match file_info.file_type() {
+                    gio::FileType::Directory => {
+                        Some(gio::Icon::for_string("go-next-symbolic").unwrap())
+                    }
+                    _ => None,
+                })
+                // FIXME: Remove this unwrap when gtk/gtk-rs-core#419 is released.
+                .unwrap_or_else(|| gio::Icon::for_string("go-next-symbolic").unwrap())
+        },
+        &[file_info_expression.upcast()],
+    );
+    directory_icon_expression.bind(&directory_icon, "gicon", Some(&directory_icon));
+
+    list_item.set_child(Some(&root));
+}
+
+/// Notifies the main component of the path of a new selection.
+fn send_new_selection(selection: &gtk::SingleSelection, sender: &Sender<AppMsg>) {
+    if let Some(item) = selection.selected_item() {
+        let file_info = item.downcast::<gio::FileInfo>().unwrap();
+
+        let directory_list = selection
+            .model()
+            .downcast::<gtk::SortListModel>()
+            .unwrap()
+            .model()
+            .unwrap()
+            .downcast::<gtk::DirectoryList>()
+            .unwrap();
+        let dir = directory_list.file().and_then(|f| f.path()).unwrap();
+
+        send!(sender, AppMsg::NewSelection(dir.join(file_info.name())));
+    }
+}
+
+/// Opens the default application for the given path.
+fn open_application_for_path(path: &Path, sender: &Sender<AppMsg>) {
+    info!("opening {:?} in external application", path);
+
+    if let Err(e) = gio::AppInfo::launch_default_for_uri(
+        &format!("file://{}", path.display()),
+        None::<&gio::AppLaunchContext>,
+    ) {
+        send!(sender, AppMsg::Error(e.into()));
     }
 }
 
