@@ -309,6 +309,8 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
         ),
     );
 
+    menu_model.freeze();
+
     menu_model
 }
 
