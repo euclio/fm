@@ -1,9 +1,10 @@
 use std::path::{Component, Path, PathBuf};
 
+use glib::clone;
+use gtk::{glib, prelude::*};
 use log::*;
 use relm4::actions::{ActionGroupName, ActionName, RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
-use relm4::gtk::prelude::*;
 use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
 use relm4_components::ParentWindow;
 
@@ -179,6 +180,14 @@ impl Widgets<AppModel, ()> for AppWidgets {
                 let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
             },
         ));
+
+        group.add_action(RelmAction::<OpenChooserAction>::new_with_target_value(
+            clone!(@weak self.main_window as window =>
+                move |_, PathBufVariant(path): PathBufVariant| {
+                    choose_and_launch_app_for_path(&window, &path);
+                }
+            ),
+        ));
         group.add_action(RelmAction::<TrashFileAction>::new_with_target_value(
             move |_, PathBufVariant(path): PathBufVariant| {
                 let file = gio::File::for_path(&path);
@@ -198,6 +207,35 @@ impl ParentWindow for AppWidgets {
     }
 }
 
+/// Creates a new [`gtk::AppChooserDialog`], shows it, and launches the selected application, if
+/// any.
+///
+/// Ideally this would be done in a child component, but we're limited by GTK here. For a typical
+/// dialog (see the [`alert`] module), we construct the dialog once and then modify its properties
+/// to respond to model updates while it's hidden for efficiency. In this case,
+/// `AppChooserDialog`'s `gfile` property is read-only, so we can't update the dialog after it's
+/// been created, Furthermore, even if we work around this by creating a new dialog manually in the
+/// view update, in a child component we don't have access to the parent widgets during the view
+/// update. This prevents us from setting the transient parent for the dialog and triggers a GTK
+/// warning. It's much easier to just handle everything in the `App` widget.
+fn choose_and_launch_app_for_path(parent: &gtk::ApplicationWindow, path: &Path) {
+    let file = gio::File::for_path(path);
+
+    let dialog = gtk::AppChooserDialog::new(Some(parent), gtk::DialogFlags::MODAL, &file);
+
+    dialog.connect_response(move |this, response| {
+        if let gtk::ResponseType::Ok = response {
+            if let Some(app_info) = this.app_info() {
+                let _ = app_info.launch(&[file.clone()], None::<&gio::AppLaunchContext>);
+            }
+        }
+
+        this.hide();
+    });
+
+    dialog.show();
+}
+
 // FIXME: Move this action group to the directory_list module when we can set its visibility.
 relm4::new_action_group!(DirectoryListRightClickActionGroup, "dir-entry");
 
@@ -210,6 +248,18 @@ impl ActionName for OpenDefaultAction {
 
     fn name() -> &'static str {
         "open-default"
+    }
+}
+
+struct OpenChooserAction;
+
+impl ActionName for OpenChooserAction {
+    type Group = DirectoryListRightClickActionGroup;
+    type Target = PathBufVariant;
+    type State = ();
+
+    fn name() -> &'static str {
+        "open-chooser"
     }
 }
 

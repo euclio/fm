@@ -11,7 +11,7 @@ use relm4::gtk::{gdk, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
 
 use crate::util::PathBufVariant;
-use crate::{AppMsg, OpenDefaultAction, TrashFileAction};
+use crate::{AppMsg, OpenChooserAction, OpenDefaultAction, TrashFileAction};
 
 /// The requested minimum width of the widget.
 const WIDTH: i32 = 200;
@@ -301,6 +301,13 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
 
         menu_model.append_item(&menu_item);
     }
+
+    menu_model.append_item(
+        &RelmAction::<OpenChooserAction>::to_menu_item_with_target_value(
+            "Open with...",
+            &PathBufVariant(path.clone()),
+        ),
+    );
 
     menu_model.append_item(
         &RelmAction::<TrashFileAction>::to_menu_item_with_target_value(
