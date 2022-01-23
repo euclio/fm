@@ -1,9 +1,9 @@
 use std::path::{Component, Path, PathBuf};
 
 use glib::clone;
-use gtk::{glib, prelude::*};
+use gtk::{gio, glib, prelude::*};
 use log::*;
-use relm4::actions::{ActionGroupName, ActionName, RelmAction, RelmActionGroup};
+use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
 use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
 use relm4_components::ParentWindow;
@@ -15,7 +15,10 @@ mod places_sidebar;
 mod util;
 
 use crate::alert::{AlertModel, AlertMsg};
-use crate::directory_list::{Directory, Selection};
+use crate::directory_list::{
+    Directory, DirectoryListRightClickActionGroup, OpenChooserAction, OpenDefaultAction, Selection,
+    TrashFileAction,
+};
 use crate::file_preview::{FilePreviewModel, FilePreviewMsg};
 use crate::places_sidebar::PlacesSidebarModel;
 use crate::util::PathBufVariant;
@@ -159,7 +162,7 @@ impl Widgets<AppModel, ()> for AppWidgets {
             set_title: Some("fm"),
             set_child = Some(&gtk::Paned) {
                 set_start_child: components.places_sidebar.root_widget(),
-                set_end_child = &libpanel::Paned {
+                set_end_child = &panel::Paned {
                     factory!(model.directories),
                     append: components.file_preview.root_widget(),
                 },
@@ -171,7 +174,7 @@ impl Widgets<AppModel, ()> for AppWidgets {
         }
     }
 
-    fn manual_view(&mut self) {
+    fn pre_view(&mut self) {
         // Handle the right-click actions from the directory entries.
         let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
         group.add_action(RelmAction::<OpenDefaultAction>::new_with_target_value(
@@ -234,43 +237,4 @@ fn choose_and_launch_app_for_path(parent: &gtk::ApplicationWindow, path: &Path) 
     });
 
     dialog.show();
-}
-
-// FIXME: Move this action group to the directory_list module when we can set its visibility.
-relm4::new_action_group!(DirectoryListRightClickActionGroup, "dir-entry");
-
-struct OpenDefaultAction;
-
-impl ActionName for OpenDefaultAction {
-    type Group = DirectoryListRightClickActionGroup;
-    type Target = PathBufVariant;
-    type State = ();
-
-    fn name() -> &'static str {
-        "open-default"
-    }
-}
-
-struct OpenChooserAction;
-
-impl ActionName for OpenChooserAction {
-    type Group = DirectoryListRightClickActionGroup;
-    type Target = PathBufVariant;
-    type State = ();
-
-    fn name() -> &'static str {
-        "open-chooser"
-    }
-}
-
-struct TrashFileAction;
-
-impl ActionName for TrashFileAction {
-    type Group = DirectoryListRightClickActionGroup;
-    type Target = PathBufVariant;
-    type State = ();
-
-    fn name() -> &'static str {
-        "trash-file"
-    }
 }

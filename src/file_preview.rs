@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
+use gtk::gio;
 use humansize::{file_size_opts::DECIMAL, FileSize};
 use log::*;
 use mime::Mime;
@@ -91,11 +92,8 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
                     Vec::default()
                 };
 
-                let path_str = path.to_string_lossy();
-
                 let language = sourceview::LanguageManager::default()
-                    .expect("language manager is not available")
-                    .guess_language(Some(&path_str), Some(&content_type));
+                    .guess_language(Some(&path), Some(&content_type));
 
                 let mime = gio::content_type_get_mime_type(&content_type)
                     .expect("unable to determine mime type")
@@ -237,7 +235,7 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
         }
     }
 
-    fn manual_view(&self) {
+    fn pre_view(&self) {
         let file = match &model.file {
             Some(file) => file,
             None => return,
