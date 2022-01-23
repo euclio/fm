@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use glib::Object;
-use relm4::gtk::glib;
+use relm4::gtk::{gio, glib};
 
 glib::wrapper! {
     /// GObject representing an entry in the places sidebar.
@@ -23,8 +23,8 @@ mod imp {
     use std::cell::RefCell;
     use std::path::PathBuf;
 
-    use gtk::gio::prelude::*;
-    use gtk::glib::{self, ParamFlags, ParamSpec, Value};
+    use gtk::gio::{self, prelude::*};
+    use gtk::glib::{self, ParamFlags, ParamSpec, ParamSpecObject, ParamSpecString, Value};
     use gtk::subclass::prelude::*;
     use once_cell::sync::Lazy;
     use relm4::gtk;
@@ -49,15 +49,15 @@ mod imp {
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
                 vec![
-                    ParamSpec::new_string("name", "name", "name", None, ParamFlags::READWRITE),
-                    ParamSpec::new_object(
+                    ParamSpecString::new("name", "name", "name", None, ParamFlags::READWRITE),
+                    ParamSpecObject::new(
                         "file",
                         "file",
                         "file",
                         gio::File::static_type(),
                         ParamFlags::READWRITE,
                     ),
-                    ParamSpec::new_string("icon", "icon", "icon", None, ParamFlags::READWRITE),
+                    ParamSpecString::new("icon", "icon", "icon", None, ParamFlags::READWRITE),
                 ]
             });
             PROPERTIES.as_ref()

@@ -2,16 +2,19 @@
 
 use std::path::{Path, PathBuf};
 
-use glib::clone;
-use libpanel::prelude::*;
+use glib::{clone, closure, Object};
 use log::*;
+use panel::prelude::*;
 use relm4::actions::RelmAction;
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
-use relm4::gtk::{gdk, glib, pango, prelude::*};
+use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
 
-use crate::util::PathBufVariant;
-use crate::{AppMsg, OpenChooserAction, OpenDefaultAction, TrashFileAction};
+use crate::AppMsg;
+
+mod actions;
+
+pub use actions::*;
 
 /// The requested minimum width of the widget.
 const WIDTH: i32 = 200;
@@ -87,10 +90,10 @@ impl FactoryPrototype for Directory {
     type Factory = FactoryVecDeque<Self>;
     type Widgets = FactoryWidgets;
     type Root = gtk::ScrolledWindow;
-    type View = libpanel::Paned;
+    type View = panel::Paned;
     type Msg = AppMsg;
 
-    fn generate(&self, _index: &DynamicIndex, sender: Sender<AppMsg>) -> FactoryWidgets {
+    fn init_view(&self, _index: &DynamicIndex, sender: Sender<AppMsg>) -> FactoryWidgets {
         let factory = gtk::SignalListItemFactory::new();
 
         let dir = self.dir();
@@ -133,9 +136,9 @@ impl FactoryPrototype for Directory {
 
     fn position(&self, _index: &DynamicIndex) {}
 
-    fn update(&self, _index: &DynamicIndex, _widgets: &FactoryWidgets) {}
+    fn view(&self, _index: &DynamicIndex, _widgets: &FactoryWidgets) {}
 
-    fn get_root(widgets: &FactoryWidgets) -> &gtk::ScrolledWindow {
+    fn root_widget(widgets: &FactoryWidgets) -> &gtk::ScrolledWindow {
         &widgets.root
     }
 }
@@ -151,66 +154,52 @@ fn build_list_item_view(dir: &Path, selection: &gtk::SingleSelection, list_item:
         .spacing(SPACING)
         .build();
 
-    let list_item_expression = gtk::ConstantExpression::new(list_item);
-    let file_info_expression = gtk::PropertyExpression::new(
-        gtk::ListItem::static_type(),
-        Some(&list_item_expression),
-        "item",
-    );
-
-    fn value_to_file_info(value: &glib::Value) -> Option<gio::FileInfo> {
-        value
-            .get::<Option<glib::Object>>()
-            .unwrap()
-            .map(|obj| obj.downcast::<gio::FileInfo>().unwrap())
-    }
+    let file_info_expression = list_item.property_expression("item");
 
     let icon_image = gtk::Image::new();
     root.append(&icon_image);
-    let icon_expression = gtk::ClosureExpression::new(
-        |args| {
-            value_to_file_info(&args[1])
-                .and_then(|file_info| file_info.icon())
-                .unwrap_or_else(|| gio::Icon::for_string("text-x-generic").unwrap())
-        },
-        &[file_info_expression.clone().upcast()],
-    );
-    icon_expression.bind(&icon_image, "gicon", Some(&icon_image));
+    file_info_expression
+        .chain_closure::<gio::Icon>(closure!(|_: Option<Object>, item: Option<Object>| {
+            item.map(|item| {
+                let file_info = item.downcast::<gio::FileInfo>().unwrap();
+                file_info
+                    .icon()
+                    .unwrap_or_else(|| gio::Icon::for_string("text-x-generic").unwrap())
+            })
+        }))
+        .bind(&icon_image, "gicon", gtk::Widget::NONE);
 
     let file_name_label = gtk::Label::builder()
         .ellipsize(pango::EllipsizeMode::Middle)
         .build();
     root.append(&file_name_label);
-    let display_name_expression = gtk::ClosureExpression::new(
-        |args| {
-            value_to_file_info(&args[1])
-                .map(|file_info| file_info.display_name().to_string())
-                .unwrap_or_default()
-        },
-        &[file_info_expression.clone().upcast()],
-    );
-    display_name_expression.bind(&file_name_label, "label", Some(&file_name_label));
+    file_info_expression
+        .chain_closure::<glib::GString>(closure!(|_: Option<Object>, item: Option<Object>| {
+            item.map(|item| {
+                let file_info = item.downcast::<gio::FileInfo>().unwrap();
+                file_info.display_name()
+            })
+        }))
+        .bind(&file_name_label, "label", gtk::Widget::NONE);
 
     let directory_icon = gtk::Image::builder()
         .halign(gtk::Align::End)
         .hexpand(true)
         .build();
     root.append(&directory_icon);
-    let directory_icon_expression = gtk::ClosureExpression::new(
-        |args| {
-            value_to_file_info(&args[1])
-                .and_then(|file_info| match file_info.file_type() {
+    file_info_expression
+        .chain_closure::<gio::Icon>(closure!(|_: Option<Object>, item: Option<Object>| {
+            item.and_then(|item| {
+                let file_info = item.downcast::<gio::FileInfo>().unwrap();
+                match file_info.file_type() {
                     gio::FileType::Directory => {
                         Some(gio::Icon::for_string("go-next-symbolic").unwrap())
                     }
                     _ => None,
-                })
-                // FIXME: Remove this unwrap when gtk/gtk-rs-core#419 is released.
-                .unwrap_or_else(|| gio::Icon::for_string("go-next-symbolic").unwrap())
-        },
-        &[file_info_expression.upcast()],
-    );
-    directory_icon_expression.bind(&directory_icon, "gicon", Some(&directory_icon));
+                }
+            })
+        }))
+        .bind(&directory_icon, "gicon", gtk::Widget::NONE);
 
     let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
     menu.set_parent(&root);
@@ -222,7 +211,7 @@ fn build_list_item_view(dir: &Path, selection: &gtk::SingleSelection, list_item:
     let dir = dir.to_owned();
     click_controller.connect_released(
         clone!(@weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
-            let target = gdk::Rectangle { x: x as i32, y: y as i32, height: 1, width: 1 };
+            let target = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
             handle_right_click(&dir, &selection, &list_item, menu, target);
         }),
     );
@@ -275,7 +264,7 @@ fn handle_right_click(
         let menu_model = populate_menu_model(info, dir);
 
         menu.set_menu_model(Some(&menu_model));
-        menu.set_pointing_to(&target);
+        menu.set_pointing_to(Some(&target));
         menu.popup();
     }
 }
@@ -292,7 +281,7 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
     {
         let menu_item = RelmAction::<OpenDefaultAction>::to_menu_item_with_target_value(
             &format!("Open with {}", app_info.display_name()),
-            &PathBufVariant(path.clone()),
+            &path,
         );
 
         if let Some(icon) = &app_info.icon() {
@@ -303,17 +292,11 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
     }
 
     menu_model.append_item(
-        &RelmAction::<OpenChooserAction>::to_menu_item_with_target_value(
-            "Open with...",
-            &PathBufVariant(path.clone()),
-        ),
+        &RelmAction::<OpenChooserAction>::to_menu_item_with_target_value("Open with...", &path),
     );
 
     menu_model.append_item(
-        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value(
-            "Move to Trash",
-            &PathBufVariant(path),
-        ),
+        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value("Move to Trash", &path),
     );
 
     menu_model.freeze();

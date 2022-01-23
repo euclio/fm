@@ -8,8 +8,8 @@
 
 use std::path::{Path, PathBuf};
 
-use gtk::glib;
 use gtk::prelude::*;
+use gtk::{gio, glib};
 use relm4::{gtk, send, ComponentUpdate, Model, Sender, Widgets};
 
 use super::{AppModel, AppMsg};
@@ -47,7 +47,7 @@ impl ComponentUpdate<AppModel> for PlacesSidebarModel {
         ];
 
         places.extend(user_dirs.iter().filter_map(|(kind, icon)| {
-            let path = glib::user_special_dir(*kind);
+            let path = glib::user_special_dir(*kind)?;
 
             if !path.exists() {
                 return None;
@@ -67,13 +67,7 @@ impl ComponentUpdate<AppModel> for PlacesSidebarModel {
 
         // If the root matches an existing place, set the selection to that place.
         let root_place_position = places.iter().position(|place| {
-            let path = place
-                .property("file")
-                .unwrap()
-                .get::<gio::File>()
-                .unwrap()
-                .path()
-                .unwrap();
+            let path = place.property::<gio::File>("file").path().unwrap();
             path == parent_model.root
         });
 
@@ -166,13 +160,7 @@ impl Widgets<PlacesSidebarModel, AppModel> for PlacesSidebarWidgets {
             .connect_selection_changed(move |selection, _, _| {
                 let selected_item = selection.selected_item().unwrap();
                 let place = selected_item.downcast::<PlaceObject>().unwrap();
-                let path = place
-                    .property("file")
-                    .unwrap()
-                    .get::<gio::File>()
-                    .unwrap()
-                    .path()
-                    .unwrap();
+                let path = place.property::<gio::File>("file").path().unwrap();
 
                 send!(sender, PlacesSidebarMsg::SelectionChanged(path));
             });
