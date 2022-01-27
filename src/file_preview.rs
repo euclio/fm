@@ -306,6 +306,8 @@ fn is_plain_text(mime: &Mime) -> bool {
     #[allow(clippy::match_like_matches_macro)]
     match (mime.type_().as_str(), mime.subtype().as_str()) {
         ("text", _) => true,
+        ("application", "javascript") => true,
+        ("application", "json") => true,
         ("application", "toml") => true,
         ("application", "x-shellscript") => true,
         _ => false,
