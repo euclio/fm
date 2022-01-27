@@ -151,75 +151,77 @@ pub enum FilePreviewMsg {
 #[relm4_macros::widget(pub)]
 impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
     view! {
-        gtk::Box {
-            add_css_class: "file-preview-widget",
-            set_baseline_position: gtk::BaselinePosition::Center,
-            set_orientation: gtk::Orientation::Vertical,
-            set_valign: gtk::Align::Center,
-            set_visible: watch! { model.file.is_some() },
+        adw::Clamp {
+            set_child = Some(&gtk::Box) {
+                add_css_class: "file-preview-widget",
+                set_baseline_position: gtk::BaselinePosition::Center,
+                set_orientation: gtk::Orientation::Vertical,
+                set_valign: gtk::Align::Center,
+                set_visible: watch! { model.file.is_some() },
 
-            append = &gtk::Box {
-                add_css_class: "file-preview",
-                append: image = &gtk::Image {
-                    set_visible: false,
-                    set_hexpand: true,
-                    set_icon_size: gtk::IconSize::Large,
-                },
-                append: picture = &gtk::Picture {
-                    add_css_class: "bordered",
-                    set_visible: false,
-                    set_hexpand: true,
-                },
-                append: text_container = &gtk::ScrolledWindow {
-                    add_css_class: "bordered",
-                    set_hexpand: true,
-                    set_propagate_natural_height: true,
-                    set_visible: false,
-                    set_overflow: gtk::Overflow::Hidden,
+                append = &gtk::Box {
+                    add_css_class: "file-preview",
+                    append: image = &gtk::Image {
+                        set_visible: false,
+                        set_hexpand: true,
+                        set_icon_size: gtk::IconSize::Large,
+                    },
+                    append: picture = &gtk::Picture {
+                        add_css_class: "bordered",
+                        set_visible: false,
+                        set_hexpand: true,
+                    },
+                    append: text_container = &gtk::ScrolledWindow {
+                        add_css_class: "bordered",
+                        set_hexpand: true,
+                        set_propagate_natural_height: true,
+                        set_visible: false,
+                        set_overflow: gtk::Overflow::Hidden,
 
-                    set_child: text = Some(&sourceview::View) {
-                        add_css_class: "file-preview-source",
-                        set_cursor_visible: false,
-                        set_editable: false,
-                        set_monospace: true,
-                    }
+                        set_child: text = Some(&sourceview::View) {
+                            add_css_class: "file-preview-source",
+                            set_cursor_visible: false,
+                            set_editable: false,
+                            set_monospace: true,
+                        }
+                    },
                 },
-            },
 
-            append = &gtk::Grid {
-                add_css_class: "file-preview-info",
-                attach(0, 0, 2, 1): file_name = &gtk::Label {
-                    add_css_class: "file-name",
-                    set_hexpand: true,
-                    set_halign: gtk::Align::Start,
-                },
-                attach(0, 1, 2, 1): file_type = &gtk::Label {
-                    add_css_class: iterate!(["file-type", "dim-label"]),
-                    set_halign: gtk::Align::Start,
-                },
-                attach(0, 2, 2, 1) = &gtk::Label {
-                    set_label: "Information",
-                    add_css_class: "section-title",
-                    set_halign: gtk::Align::Start,
-                },
-                attach(0, 3, 1, 1) = &gtk::Label {
-                    set_label: "Created",
-                    add_css_class: iterate!(["info-name", "dim-label"]),
-                    set_halign: gtk::Align::Start,
-                },
-                attach(1, 3, 1, 1): created = &gtk::Label {
-                    add_css_class: "info-value",
-                    set_halign: gtk::Align::End,
-                },
-                attach(0, 4, 1, 1) = &gtk::Label {
-                    set_label: "Modified",
-                    add_css_class: iterate!(["info-name", "dim-label"]),
-                    set_halign: gtk::Align::Start,
-                },
-                attach(1, 4, 1, 1): modified = &gtk::Label {
-                    add_css_class: "info-value",
-                    set_halign: gtk::Align::End,
-                },
+                append = &gtk::Grid {
+                    add_css_class: "file-preview-info",
+                    attach(0, 0, 2, 1): file_name = &gtk::Label {
+                        add_css_class: "file-name",
+                        set_hexpand: true,
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach(0, 1, 2, 1): file_type = &gtk::Label {
+                        add_css_class: iterate!(["file-type", "dim-label"]),
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach(0, 2, 2, 1) = &gtk::Label {
+                        set_label: "Information",
+                        add_css_class: "section-title",
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach(0, 3, 1, 1) = &gtk::Label {
+                        set_label: "Created",
+                        add_css_class: iterate!(["info-name", "dim-label"]),
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach(1, 3, 1, 1): created = &gtk::Label {
+                        add_css_class: "info-value",
+                        set_halign: gtk::Align::End,
+                    },
+                    attach(0, 4, 1, 1) = &gtk::Label {
+                        set_label: "Modified",
+                        add_css_class: iterate!(["info-name", "dim-label"]),
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach(1, 4, 1, 1): modified = &gtk::Label {
+                        add_css_class: "info-value",
+                        set_halign: gtk::Align::End,
+                    },
+                }
             }
         }
     }
