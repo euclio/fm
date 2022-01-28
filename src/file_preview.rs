@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
-use gtk::gio;
+use gtk::{gdk, gio};
 use humansize::{file_size_opts::DECIMAL, FileSize};
 use log::*;
 use mime::Mime;
@@ -15,7 +15,7 @@ use relm4::{gtk, ComponentUpdate, Sender, Widgets};
 use sourceview::prelude::*;
 use sourceview5 as sourceview;
 
-use super::{AppModel, AppMsg, Model};
+use crate::{util, AppModel, AppMsg, Model};
 
 /// The buffer size used to read the beginning of a file to predict its mime type and preview its
 /// contents.
@@ -29,8 +29,8 @@ enum FilePreview {
     /// Image file, to be displayed in [`FilePreviewWidgets::picture`].
     Image(gio::File),
 
-    /// Non-text, non-image file to be displayed in [`FilePreviewWidgets::image`].
-    Icon(gio::Icon),
+    /// Non-text, non-image file to be previewed as an icon in [`FilePreviewWidgets::image`].
+    Icon(gdk::Paintable),
 }
 
 #[derive(Debug)]
@@ -74,17 +74,24 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
             FilePreviewMsg::NewSelection(path) if path.is_dir() => None,
             FilePreviewMsg::NewSelection(path) => {
                 // TODO: make async?
-                let content_type = match gio::File::for_path(&path).query_info(
-                    &gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                let file_info = match gio::File::for_path(&path).query_info(
+                    &[
+                        *gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                        *gio::FILE_ATTRIBUTE_STANDARD_ICON,
+                        *gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
+                    ]
+                    .join(","),
                     gio::FileQueryInfoFlags::NONE,
-                    None::<&gio::Cancellable>,
+                    gio::Cancellable::NONE,
                 ) {
-                    Ok(info) => info.content_type().unwrap(),
+                    Ok(info) => info,
                     Err(e) => {
-                        warn!("unable to determine content type: {}", e);
+                        warn!("unable to query file info: {}", e);
                         return;
                     }
                 };
+
+                let content_type = file_info.content_type().unwrap();
 
                 let contents = if path.is_file() {
                     read_start_of_file(&path).unwrap_or_default()
@@ -107,7 +114,11 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
                     _ if is_plain_text(&mime) => {
                         FilePreview::Text(String::from_utf8_lossy(&contents).into())
                     }
-                    _ => FilePreview::Icon(gio::content_type_get_icon(&content_type)),
+                    _ => {
+                        let icon_theme =
+                            gtk::IconTheme::for_display(&gdk::Display::default().unwrap());
+                        FilePreview::Icon(util::icon_for_file(&icon_theme, 128, &file_info))
+                    }
                 };
 
                 let (size, created, modified) = (|| -> io::Result<_> {
@@ -267,8 +278,8 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
                 self.picture.set_file(Some(file));
                 self.picture.set_visible(true);
             }
-            FilePreview::Icon(icon) => {
-                self.image.set_gicon(Some(icon));
+            FilePreview::Icon(paintable) => {
+                self.image.set_paintable(Some(paintable));
                 self.image.set_visible(true);
             }
             FilePreview::Text(text) => {

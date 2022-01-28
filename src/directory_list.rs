@@ -10,6 +10,7 @@ use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
 
+use crate::util;
 use crate::AppMsg;
 
 mod actions;
@@ -46,6 +47,7 @@ impl Directory {
                     "standard::icon",
                     "standard::file-type",
                     "standard::content-type",
+                    "standard::is-symlink",
                 ]
                 .join(","),
             ),
@@ -159,15 +161,17 @@ fn build_list_item_view(dir: &Path, selection: &gtk::SingleSelection, list_item:
     let icon_image = gtk::Image::new();
     root.append(&icon_image);
     file_info_expression
-        .chain_closure::<gio::Icon>(closure!(|_: Option<Object>, item: Option<Object>| {
+        .chain_closure::<gdk::Paintable>(closure!(|_: Option<Object>, item: Option<Object>| {
             item.map(|item| {
                 let file_info = item.downcast::<gio::FileInfo>().unwrap();
-                file_info
-                    .icon()
-                    .unwrap_or_else(|| gio::Icon::for_string("text-x-generic").unwrap())
+
+                // FIXME: How inefficient is it to query this every time?
+                let icon_theme = gtk::IconTheme::for_display(&gdk::Display::default().unwrap());
+
+                util::icon_for_file(&icon_theme, 16, &file_info)
             })
         }))
-        .bind(&icon_image, "gicon", gtk::Widget::NONE);
+        .bind(&icon_image, "paintable", gtk::Widget::NONE);
 
     let file_name_label = gtk::Label::builder()
         .ellipsize(pango::EllipsizeMode::Middle)

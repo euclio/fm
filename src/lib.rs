@@ -12,6 +12,7 @@ mod alert;
 mod directory_list;
 mod file_preview;
 mod places_sidebar;
+mod util;
 
 use crate::alert::{AlertModel, AlertMsg};
 use crate::directory_list::{
