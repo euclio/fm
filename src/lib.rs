@@ -9,12 +9,14 @@ use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
 use relm4_components::ParentWindow;
 
 mod alert;
+mod config;
 mod directory_list;
 mod file_preview;
 mod places_sidebar;
 mod util;
 
 use crate::alert::{AlertModel, AlertMsg};
+use crate::config::State;
 use crate::directory_list::{
     Directory, DirectoryListRightClickActionGroup, OpenChooserAction, OpenDefaultAction, Selection,
     TrashFileAction,
@@ -26,6 +28,7 @@ use crate::places_sidebar::PlacesSidebarModel;
 pub struct AppModel {
     root: PathBuf,
     directories: FactoryVecDeque<Directory>,
+    state: State,
 }
 
 impl AppModel {
@@ -36,9 +39,19 @@ impl AppModel {
             root
         };
 
+        let state = State::read()
+            .map_err(|e| {
+                warn!("unable to read application state: {}", e);
+                e
+            })
+            .unwrap_or_default();
+
+        info!("starting with application state: {:?}", state);
+
         let mut model = AppModel {
             root: root.to_owned(),
             directories: FactoryVecDeque::new(),
+            state,
         };
 
         model.directories.push_back(Directory::new(root));
@@ -158,6 +171,7 @@ pub struct AppComponents {
 impl Widgets<AppModel, ()> for AppWidgets {
     view! {
         main_window = gtk::ApplicationWindow {
+            set_default_size: args!(model.state.width, model.state.height),
             set_title: Some("fm"),
             set_child = Some(&gtk::Paned) {
                 set_start_child: components.places_sidebar.root_widget(),
@@ -169,6 +183,23 @@ impl Widgets<AppModel, ()> for AppWidgets {
                 set_resize_start_child: false,
                 set_shrink_end_child: false,
                 set_shrink_start_child: false,
+            },
+
+            connect_close_request => move |this| {
+                let (width, height) = this.default_size();
+                let is_maximized = this.is_maximized();
+
+                let new_state = State {
+                    width,
+                    height,
+                    is_maximized,
+                };
+
+                if let Err(e) = new_state.write() {
+                    warn!("unable to write application state: {}", e);
+                }
+
+                gtk::Inhibit(false)
             }
         }
     }
@@ -200,6 +231,12 @@ impl Widgets<AppModel, ()> for AppWidgets {
         let actions = group.into_action_group();
         self.main_window
             .insert_action_group("dir-entry", Some(&actions));
+    }
+
+    fn post_view(&mut self) {
+        if model.state.is_maximized {
+            self.main_window.maximize();
+        }
     }
 }
 
