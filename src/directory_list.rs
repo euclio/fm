@@ -130,6 +130,7 @@ impl FactoryPrototype for Directory {
 
         let scroller = gtk::ScrolledWindow::builder()
             .width_request(WIDTH)
+            .hscrollbar_policy(gtk::PolicyType::Never)
             .child(&list_view)
             .build();
 

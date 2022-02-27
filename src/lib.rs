@@ -28,6 +28,11 @@ use crate::places_sidebar::PlacesSidebarModel;
 pub struct AppModel {
     root: PathBuf,
     directories: FactoryVecDeque<Directory>,
+
+    /// Whether the directory panes scroll window should update its scroll position to the upper
+    /// bound on the next view update.
+    update_directory_scroll_position: bool,
+
     state: State,
 }
 
@@ -51,6 +56,7 @@ impl AppModel {
         let mut model = AppModel {
             root: root.to_owned(),
             directories: FactoryVecDeque::new(),
+            update_directory_scroll_position: false,
             state,
         };
 
@@ -98,6 +104,8 @@ impl AppUpdate for AppModel {
     fn update(&mut self, msg: AppMsg, components: &AppComponents, _sender: Sender<AppMsg>) -> bool {
         info!("received message: {:?}", msg);
 
+        self.update_directory_scroll_position = false;
+
         match msg {
             AppMsg::Error(err) => {
                 let error_alert = &components.error_alert;
@@ -138,10 +146,14 @@ impl AppUpdate for AppModel {
 
                 let file_preview = &components.file_preview;
                 send!(file_preview, FilePreviewMsg::NewSelection(path));
+
+                self.update_directory_scroll_position = true;
             }
             AppMsg::NewSelection(Selection::None) => {
                 let file_preview = &components.file_preview;
                 send!(file_preview, FilePreviewMsg::Hide);
+
+                self.update_directory_scroll_position = true;
             }
             AppMsg::NewRoot(new_root) => {
                 info!("new root: {:?}", new_root);
@@ -153,6 +165,8 @@ impl AppUpdate for AppModel {
 
                 let file_preview = &components.file_preview;
                 send!(file_preview, FilePreviewMsg::Hide);
+
+                self.update_directory_scroll_position = true;
             }
         }
 
@@ -175,9 +189,11 @@ impl Widgets<AppModel, ()> for AppWidgets {
             set_title: Some("fm"),
             set_child = Some(&gtk::Paned) {
                 set_start_child: components.places_sidebar.root_widget(),
-                set_end_child = &panel::Paned {
-                    factory!(model.directories),
-                    append: components.file_preview.root_widget(),
+                set_end_child: directory_panes_scroller = &gtk::ScrolledWindow {
+                    set_child = Some(&panel::Paned) {
+                        factory!(model.directories),
+                        append: components.file_preview.root_widget(),
+                    },
                 },
                 set_resize_end_child: true,
                 set_resize_start_child: false,
@@ -202,6 +218,16 @@ impl Widgets<AppModel, ()> for AppWidgets {
                 gtk::Inhibit(false)
             }
         }
+    }
+
+    fn post_init() {
+        // TODO: There's sometimes a delay in updating the adjustment upper bound when a new pane
+        // is added, causing this code to not trigger at the right time. Needs more investigation.
+        directory_panes_scroller
+            .hadjustment()
+            .connect_notify(Some("upper"), |this, _| {
+                set_adjustment_to_upper_bound(this);
+            });
     }
 
     fn pre_view(&mut self) {
@@ -236,6 +262,17 @@ impl Widgets<AppModel, ()> for AppWidgets {
     fn post_view(&mut self) {
         if model.state.is_maximized {
             self.main_window.maximize();
+        }
+
+        if model.update_directory_scroll_position {
+            // Although this function is already called whenever the hadjustment changes, we also
+            // sometimes want to scroll when the adjustment doesn't change.
+            //
+            // Consider the user selecting a new directory entry on a partially obscured panel. The
+            // adjustment won't change, because the total number of panels is the same. However,
+            // we still want to scroll over to it because it's new information that the user wants
+            // to see.
+            set_adjustment_to_upper_bound(&self.directory_panes_scroller.hadjustment());
         }
     }
 }
@@ -273,4 +310,12 @@ fn choose_and_launch_app_for_path(parent: &gtk::ApplicationWindow, path: &Path) 
     });
 
     dialog.show();
+}
+
+/// Updates the value of an adjustment to its upper bound.
+///
+/// This is used to keep new directories and file information visible inside the directory panes
+/// scroll window as user interacts with the application.
+fn set_adjustment_to_upper_bound(adjustment: &gtk::Adjustment) {
+    adjustment.set_value(adjustment.upper());
 }
