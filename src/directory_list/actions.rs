@@ -30,6 +30,18 @@ impl ActionName for OpenChooserAction {
     }
 }
 
+pub struct RenameAction;
+
+impl ActionName for RenameAction {
+    type Group = DirectoryListRightClickActionGroup;
+    type Target = PathBuf;
+    type State = ();
+
+    fn name() -> &'static str {
+        "rename"
+    }
+}
+
 pub struct TrashFileAction;
 
 impl ActionName for TrashFileAction {

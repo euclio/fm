@@ -1,7 +1,9 @@
 //! Factory widget that displays a listing of the contents of a directory.
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
+use anyhow::bail;
 use glib::{clone, closure, Object};
 use log::*;
 use panel::prelude::*;
@@ -117,13 +119,12 @@ impl FactoryPrototype for Directory {
             .build();
 
         let dir = self.dir();
-        let sender_ = sender;
         list_view.connect_activate(
-            clone!(@weak self.list_model as list_model => move |_, position| {
+            clone!(@strong sender, @weak self.list_model as list_model => move |_, position| {
                 if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
                     let info = item.downcast_ref::<gio::FileInfo>().unwrap();
                     let path = dir.join(info.name());
-                    open_application_for_path(&path, &sender_);
+                    open_application_for_path(&path, &sender);
                 }
             }),
         );
@@ -227,13 +228,43 @@ fn build_list_item_view(
     );
     root.add_controller(&click_controller);
 
-    register_context_actions(root.upcast_ref(), sender.clone());
+    let rename_popover = build_rename_popover(root.upcast_ref());
+    register_context_actions(root.upcast_ref(), &rename_popover, sender.clone());
 
     list_item.set_child(Some(&root));
 }
 
+/// Construct the popover that is displayed when renaming an item.
+fn build_rename_popover(parent: &gtk::Widget) -> gtk::Popover {
+    let popover = gtk::Popover::new();
+
+    let root = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+
+    let entry = gtk::Entry::new();
+    root.append(&entry);
+
+    let button = gtk::Button::builder()
+        .label("Rename")
+        .css_classes(vec![String::from("suggested-action")])
+        .build();
+    button.connect_clicked(clone!(@weak entry => move |_| {
+        entry.emit_activate();
+    }));
+
+    root.append(&button);
+
+    popover.set_child(Some(&root));
+    popover.set_parent(parent);
+
+    popover
+}
+
 /// Register right-click context menu actions and handlers.
-fn register_context_actions(list_item_view: &gtk::Widget, sender: Sender<AppMsg>) {
+fn register_context_actions(
+    list_item_view: &gtk::Widget,
+    rename_popover: &gtk::Popover,
+    sender: Sender<AppMsg>,
+) {
     let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
 
     group.add_action(RelmAction::<OpenDefaultAction>::new_with_target_value(
@@ -248,6 +279,54 @@ fn register_context_actions(list_item_view: &gtk::Widget, sender: Sender<AppMsg>
             send!(sender, AppMsg::ChooseAndLaunchApp(path));
         }),
     ));
+
+    // This is a bit nasty: we create a new handler each time that the action is activated so that
+    // we don't rely on the view alone to provide the file path, instead relying on the action
+    // parameter. We have to disconnect the old handler each time because registering a new handler
+    // is additive.
+    let previous_handler_id = RefCell::new(None);
+    group.add_action(RelmAction::<RenameAction>::new_with_target_value(
+        clone!(@weak rename_popover, @strong sender => move |_, path: PathBuf| {
+            let root = rename_popover.child().unwrap().downcast::<gtk::Box>().unwrap();
+            let entry = root.first_child().unwrap().downcast::<gtk::Entry>().unwrap();
+
+            if let Some(id) = previous_handler_id.borrow_mut().take() {
+                glib::signal_handler_disconnect(&entry, id);
+            }
+
+            entry.set_text(&path.file_name().unwrap().to_string_lossy());
+            let signal_handler_id = entry.connect_activate(clone!(
+                    @weak rename_popover,
+                    @strong path,
+                    @strong sender => move |this| {
+                        let new_name = this.text();
+                        info!("renaming {} to {}", path.display(), new_name);
+
+
+                        let res = (|| -> anyhow::Result<()> {
+                            if new_name.is_empty() {
+                                bail!("File name cannot be empty.");
+                            }
+
+                            let file = gio::File::for_path(&path);
+                            file.set_display_name(&new_name, gio::Cancellable::NONE)?;
+
+                            Ok(())
+                        })();
+
+                        if let Err(err) = res {
+                            send!(sender, AppMsg::Error(err.into()));
+                        }
+
+                        rename_popover.popdown();
+            }));
+
+            *previous_handler_id.borrow_mut() = Some(signal_handler_id);
+
+            rename_popover.popup();
+        }),
+    ));
+
     group.add_action(RelmAction::<TrashFileAction>::new_with_target_value(
         move |_, path: PathBuf| {
             let file = gio::File::for_path(&path);
@@ -340,6 +419,11 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
     menu_model.append_item(
         &RelmAction::<TrashFileAction>::to_menu_item_with_target_value("Move to Trash", &path),
     );
+
+    menu_model.append_item(&RelmAction::<RenameAction>::to_menu_item_with_target_value(
+        "Rename...",
+        &path,
+    ));
 
     menu_model.freeze();
 
