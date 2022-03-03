@@ -5,10 +5,8 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use glib::clone;
-use gtk::{gio, glib, prelude::*};
+use gtk::{gio, prelude::*};
 use log::*;
-use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
 use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
 use relm4_components::ParentWindow;
@@ -22,10 +20,7 @@ mod util;
 
 use crate::alert::{AlertModel, AlertMsg};
 use crate::config::State;
-use crate::directory_list::{
-    Directory, DirectoryListRightClickActionGroup, OpenChooserAction, OpenDefaultAction, Selection,
-    TrashFileAction,
-};
+use crate::directory_list::{Directory, Selection};
 use crate::file_preview::{FilePreviewModel, FilePreviewMsg};
 use crate::places_sidebar::PlacesSidebarModel;
 
@@ -37,6 +32,9 @@ pub struct AppModel {
     /// Whether the directory panes scroll window should update its scroll position to the upper
     /// bound on the next view update.
     update_directory_scroll_position: bool,
+
+    /// Open the app chooser to open the given path on the next view update.
+    open_app_for_path: Option<PathBuf>,
 
     state: State,
 }
@@ -62,6 +60,7 @@ impl AppModel {
             root: root.to_owned(),
             directories: FactoryVecDeque::new(),
             update_directory_scroll_position: false,
+            open_app_for_path: None,
             state,
         };
 
@@ -97,6 +96,9 @@ pub enum AppMsg {
     /// stack.
     /// - If the new selection is a file, the preview must be updated.
     NewSelection(Selection),
+
+    /// Trigger the application chooser to pick an application to open the given file path.
+    ChooseAndLaunchApp(PathBuf),
 }
 
 impl Model for AppModel {
@@ -109,6 +111,7 @@ impl AppUpdate for AppModel {
     fn update(&mut self, msg: AppMsg, components: &AppComponents, _sender: Sender<AppMsg>) -> bool {
         info!("received message: {:?}", msg);
 
+        self.open_app_for_path = None;
         self.update_directory_scroll_position = false;
 
         match msg {
@@ -173,6 +176,7 @@ impl AppUpdate for AppModel {
 
                 self.update_directory_scroll_position = true;
             }
+            AppMsg::ChooseAndLaunchApp(path) => self.open_app_for_path = Some(path),
         }
 
         true
@@ -235,35 +239,6 @@ impl Widgets<AppModel, ()> for AppWidgets {
             });
     }
 
-    fn pre_view(&mut self) {
-        // Handle the right-click actions from the directory entries.
-        let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
-        group.add_action(RelmAction::<OpenDefaultAction>::new_with_target_value(
-            move |_, path: PathBuf| {
-                let uri = gio::File::for_path(path).uri();
-                let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
-            },
-        ));
-
-        group.add_action(RelmAction::<OpenChooserAction>::new_with_target_value(
-            clone!(@weak self.main_window as window =>
-                move |_, path: PathBuf| {
-                    choose_and_launch_app_for_path(&window, &path);
-                }
-            ),
-        ));
-        group.add_action(RelmAction::<TrashFileAction>::new_with_target_value(
-            move |_, path: PathBuf| {
-                let file = gio::File::for_path(&path);
-                let _ = file.trash(None::<&gio::Cancellable>);
-            },
-        ));
-
-        let actions = group.into_action_group();
-        self.main_window
-            .insert_action_group("dir-entry", Some(&actions));
-    }
-
     fn post_view(&mut self) {
         if model.state.is_maximized {
             self.main_window.maximize();
@@ -278,6 +253,10 @@ impl Widgets<AppModel, ()> for AppWidgets {
             // we still want to scroll over to it because it's new information that the user wants
             // to see.
             set_adjustment_to_upper_bound(&self.directory_panes_scroller.hadjustment());
+        }
+
+        if let Some(path) = &model.open_app_for_path {
+            choose_and_launch_app_for_path(&self.main_window, path);
         }
     }
 }

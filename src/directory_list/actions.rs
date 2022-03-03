@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use relm4::actions::ActionName;
 
-relm4::new_action_group!(pub DirectoryListRightClickActionGroup, "dir-entry");
+relm4::new_action_group!(pub DirectoryListRightClickActionGroup, "directory-list");
 
 pub struct OpenDefaultAction;
 

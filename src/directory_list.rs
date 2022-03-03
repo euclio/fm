@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use glib::{clone, closure, Object};
 use log::*;
 use panel::prelude::*;
-use relm4::actions::RelmAction;
+use relm4::actions::{ActionGroupName, RelmAction, RelmActionGroup};
 use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
 use relm4::{gtk, send, Sender};
@@ -15,7 +15,7 @@ use crate::AppMsg;
 
 mod actions;
 
-pub use actions::*;
+use actions::*;
 
 /// The requested minimum width of the widget.
 const WIDTH: i32 = 200;
@@ -100,8 +100,8 @@ impl FactoryPrototype for Directory {
 
         let dir = self.dir();
         factory.connect_setup(
-            clone!(@weak self.list_model as selection => move |_, list_item| {
-                build_list_item_view(&dir, &selection, list_item);
+            clone!(@strong sender, @weak self.list_model as selection => move |_, list_item| {
+                build_list_item_view(&dir, &selection, list_item, &sender);
             }),
         );
 
@@ -150,7 +150,12 @@ impl FactoryPrototype for Directory {
 ///
 /// This view displays an icon, the name of the file, and an arrow indicating if the item is a file
 /// or directory.
-fn build_list_item_view(dir: &Path, selection: &gtk::SingleSelection, list_item: &gtk::ListItem) {
+fn build_list_item_view(
+    dir: &Path,
+    selection: &gtk::SingleSelection,
+    list_item: &gtk::ListItem,
+    sender: &Sender<AppMsg>,
+) {
     let root = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .hexpand(true)
@@ -222,7 +227,39 @@ fn build_list_item_view(dir: &Path, selection: &gtk::SingleSelection, list_item:
     );
     root.add_controller(&click_controller);
 
+    register_context_actions(root.upcast_ref(), sender.clone());
+
     list_item.set_child(Some(&root));
+}
+
+/// Register right-click context menu actions and handlers.
+fn register_context_actions(list_item_view: &gtk::Widget, sender: Sender<AppMsg>) {
+    let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
+
+    group.add_action(RelmAction::<OpenDefaultAction>::new_with_target_value(
+        move |_, path: PathBuf| {
+            let uri = gio::File::for_path(path).uri();
+            let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
+        },
+    ));
+
+    group.add_action(RelmAction::<OpenChooserAction>::new_with_target_value(
+        clone!(@strong sender => move |_, path: PathBuf| {
+            send!(sender, AppMsg::ChooseAndLaunchApp(path));
+        }),
+    ));
+    group.add_action(RelmAction::<TrashFileAction>::new_with_target_value(
+        move |_, path: PathBuf| {
+            let file = gio::File::for_path(&path);
+            let _ = file.trash(None::<&gio::Cancellable>);
+        },
+    ));
+
+    let actions = group.into_action_group();
+    list_item_view.insert_action_group(
+        <DirectoryListRightClickActionGroup as ActionGroupName>::group_name(),
+        Some(&actions),
+    );
 }
 
 /// Notifies the main component of the path of a new selection.
