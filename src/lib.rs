@@ -1,3 +1,8 @@
+#![warn(clippy::dbg_macro)]
+#![warn(clippy::print_stderr)]
+#![warn(clippy::print_stdout)]
+#![warn(clippy::todo)]
+
 use std::path::{Component, Path, PathBuf};
 
 use glib::clone;
