@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
 use anyhow::bail;
+use glib::translate::{from_glib_full, IntoGlib};
 use glib::{clone, closure, Object};
 use log::*;
 use panel::prelude::*;
@@ -101,11 +102,13 @@ impl FactoryPrototype for Directory {
         let factory = gtk::SignalListItemFactory::new();
 
         let dir = self.dir();
-        factory.connect_setup(
-            clone!(@strong sender, @weak self.list_model as selection => move |_, list_item| {
-                build_list_item_view(&dir, &selection, list_item, &sender);
-            }),
-        );
+        factory.connect_setup(clone!(
+            @strong dir,
+            @strong sender,
+            @weak self.list_model as selection,
+        => move |_, list_item| {
+            build_list_item_view(dir.clone(), &selection, list_item, &sender);
+        }));
 
         let sender_ = sender.clone();
         self.list_model
@@ -119,21 +122,26 @@ impl FactoryPrototype for Directory {
             .build();
 
         let dir = self.dir();
-        list_view.connect_activate(
-            clone!(@strong sender, @weak self.list_model as list_model => move |_, position| {
-                if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
-                    let info = item.downcast_ref::<gio::FileInfo>().unwrap();
-                    let path = dir.join(info.name());
-                    open_application_for_path(&path, &sender);
-                }
-            }),
-        );
+        list_view.connect_activate(clone!(
+            @strong dir,
+            @strong sender,
+            @weak self.list_model as list_model,
+        => move |_, position| {
+            if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
+                let info = item.downcast_ref::<gio::FileInfo>().unwrap();
+                let path = dir.join(info.name());
+                open_application_for_path(&path, &sender);
+            }
+        }));
 
         let scroller = gtk::ScrolledWindow::builder()
             .width_request(WIDTH)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .child(&list_view)
             .build();
+
+        let drop_target = new_drop_target_for_dir(dir, sender);
+        list_view.add_controller(&drop_target);
 
         FactoryWidgets { root: scroller }
     }
@@ -152,7 +160,7 @@ impl FactoryPrototype for Directory {
 /// This view displays an icon, the name of the file, and an arrow indicating if the item is a file
 /// or directory.
 fn build_list_item_view(
-    dir: &Path,
+    dir: PathBuf,
     selection: &gtk::SingleSelection,
     list_item: &gtk::ListItem,
     sender: &Sender<AppMsg>,
@@ -219,14 +227,45 @@ fn build_list_item_view(
     let click_controller = gtk::GestureClick::builder()
         .button(BUTTON_RIGHT_CLICK)
         .build();
-    let dir = dir.to_owned();
     click_controller.connect_released(
-        clone!(@weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
+        clone!(@strong dir, @weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
             let target = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
             handle_right_click(&dir, &selection, &list_item, menu, target);
         }),
     );
     root.add_controller(&click_controller);
+
+    let drag_source_controller = gtk::DragSource::builder()
+        .actions(gdk::DragAction::MOVE)
+        .build();
+
+    // TODO: The documentation seems pretty adamant that you need to listen to `drag-end` if you're
+    // supporting `DragAction::MOVE`, but everything seems to work as expected if you don't, at
+    // least with Nautilus...
+
+    file_info_expression
+        .chain_closure::<gdk::ContentProvider>(closure!(
+            |_: Option<Object>, item: Option<Object>| {
+                item.map(|item| {
+                    let file_info = item.downcast_ref::<gio::FileInfo>().unwrap();
+                    let file = gio::File::for_path(dir.join(file_info.name()));
+
+                    // Dip into FFI here since the Rust bindings don't currently provide a way to
+                    // construct the content provider from a GFile.
+                    let content_provider: gdk::ContentProvider = unsafe {
+                        from_glib_full(gdk::ffi::gdk_content_provider_new_typed(
+                            gio::File::static_type().into_glib(),
+                            file,
+                        ))
+                    };
+
+                    content_provider
+                })
+            }
+        ))
+        .bind(&drag_source_controller, "content", gtk::Widget::NONE);
+
+    root.add_controller(&drag_source_controller);
 
     let rename_popover = build_rename_popover(root.upcast_ref());
     register_context_actions(root.upcast_ref(), &rename_popover, sender.clone());
@@ -339,6 +378,50 @@ fn register_context_actions(
         <DirectoryListRightClickActionGroup as ActionGroupName>::group_name(),
         Some(&actions),
     );
+}
+
+/// Builds a new drop target that represents the current directory.
+///
+/// The drop target accepts [`gio::File`]s and rejects files that are already in the same
+/// directory.
+fn new_drop_target_for_dir(dir: PathBuf, sender: Sender<AppMsg>) -> gtk::DropTarget {
+    let drop_target = gtk::DropTarget::builder()
+        .actions(gdk::DragAction::MOVE)
+        .preload(true)
+        .build();
+
+    drop_target.set_types(&[gio::File::static_type()]);
+
+    drop_target.connect_value_notify(clone!(@strong dir => move |this| {
+        if let Some(value) = this.value() {
+            let file = value.get::<gio::File>().unwrap();
+
+            info!("attempting to drop file {:?}", file.path());
+
+            if file.parent().and_then(|f| f.path()).as_deref() == Some(dir.as_path()) {
+                info!("rejecting drop; file is already in directory");
+                this.reject();
+            }
+        }
+    }));
+
+    drop_target.connect_drop(clone!(@strong dir => move |_, value, _, _| {
+        let file = value.get::<gio::File>().unwrap();
+
+        info!("dropping {:?}", file.path());
+
+        let destination = gio::File::for_path(dir.join(file.basename().unwrap()));
+        let res = file.move_(&destination, gio::FileCopyFlags::NONE, gio::Cancellable::NONE, None);
+
+        if let Err(err) = res {
+            send!(sender, AppMsg::Error(err.into()));
+            return false;
+        }
+
+        true
+    }));
+
+    drop_target
 }
 
 /// Notifies the main component of the path of a new selection.
