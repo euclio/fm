@@ -26,10 +26,15 @@ untested, but if you can get the system dependencies to build, `fm` should work.
 
 2. Install system dependencies.
 
+    Note that libpanel is alpha software and may not be packaged for your
+    system. In that case, you can build it from source, install it, and then
+    build `fm` with the `PKG_CONFIG_PATH` environment variable set to
+    `PKG_CONFIG_PATH="/path/to/libpanel/lib/pkgconfig:$PKG_CONFIG_PATH"`.
+
     #### Arch Linux
 
     ```sh
-    $ pacman -Syu gtk4 libadwaita libpanel-git gtksourceview-git
+    $ pacman -Syu gtk4 libadwaita libpanel-git gtksourceview5
     ```
 
 3. Build and run the application.
