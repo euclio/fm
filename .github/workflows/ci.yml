@@ -1,0 +1,58 @@
+on: [push, pull_request]
+
+name: ci
+
+jobs:
+  build:
+    name: check
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/gtk-rs/gtk4-rs/gtk4:latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly
+    env:
+      DISPLAY: ":99.0"
+    steps:
+      - name: Install dependencies
+        run: |
+          yum install -y gtk4-devel gtksourceview5-devel libadwaita-devel
+          git clone --depth 1 https://gitlab.gnome.org/chergert/libpanel
+          cd libpanel
+          meson _build -Dvapi=false -Dintrospection=disabled
+          ninja -C _build install
+          cd -
+
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Clippy
+        run: cargo clippy -- --deny warnings
+
+      - name: Build
+        run: cargo build
+
+      - name: Test
+        run: cargo test
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - run: rustup component add rustfmt
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
