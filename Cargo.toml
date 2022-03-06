@@ -3,6 +3,7 @@ name = "fm"
 version = "0.1.0"
 edition = "2021"
 authors = ["Andy Russell <arussell123@gmail.com>"]
+publish = false
 
 [dependencies]
 anyhow = "1.0.51"
