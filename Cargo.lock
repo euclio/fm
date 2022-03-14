@@ -860,8 +860,9 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
 name = "relm4"
-version = "0.4.2"
-source = "git+https://github.com/AaronErhardt/relm4.git?rev=fadeab#fadeabf558a21b14e8f4de32c8f69decb0073efc"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c37490ffa536509d10dd6d57cf836b20729568b4cd2507b532445748560ccca"
 dependencies = [
  "fragile",
  "futures-core",
@@ -875,7 +876,8 @@ dependencies = [
 [[package]]
 name = "relm4-components"
 version = "0.4.0"
-source = "git+https://github.com/AaronErhardt/relm4.git?rev=fadeab#fadeabf558a21b14e8f4de32c8f69decb0073efc"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cf589661c16df74fb0d01db15f8da638b74fc0234f58a6042e33f84c7484373"
 dependencies = [
  "log",
  "once_cell",
@@ -885,8 +887,9 @@ dependencies = [
 
 [[package]]
 name = "relm4-macros"
-version = "0.4.2"
-source = "git+https://github.com/AaronErhardt/relm4.git?rev=fadeab#fadeabf558a21b14e8f4de32c8f69decb0073efc"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0df3a77e22dee74ce668daa437252e02a19252ae0eda49ebebb20b365afc52a"
 dependencies = [
  "proc-macro2",
  "quote",
