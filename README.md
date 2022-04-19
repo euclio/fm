@@ -2,6 +2,8 @@
 
 `fm` is a small, general-purpose file manager built using GTK and [Relm4].
 
+![Screenshot](https://user-images.githubusercontent.com/1372438/164090003-20bca431-e2ef-475a-86d4-df64d10e1989.png)
+
 The directories are visualized using [Miller columns], which enables quick
 navigation throughout the hierarchy.
 
