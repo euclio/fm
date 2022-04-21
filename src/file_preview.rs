@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
-use gtk::{gdk, gio};
-use humansize::{file_size_opts::DECIMAL, FileSize};
+use gtk::{gdk, gio, glib};
 use log::*;
 use mime::Mime;
 use relm4::gtk::prelude::*;
@@ -261,11 +260,8 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
                 .expect("file must have a name")
                 .to_string_lossy(),
         );
-        self.file_type.set_text(&format!(
-            "{} — {}",
-            file.mime,
-            file.size.file_size(DECIMAL).unwrap(),
-        ));
+        self.file_type
+            .set_text(&format!("{} — {}", file.mime, glib::format_size(file.size),));
         self.created.set_text(&format_system_time(file.created));
         self.modified.set_text(&format_system_time(file.modified));
 
