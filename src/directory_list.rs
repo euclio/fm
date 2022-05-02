@@ -7,11 +7,10 @@ use anyhow::bail;
 use glib::translate::{from_glib_full, IntoGlib};
 use glib::{clone, closure, Object};
 use log::*;
-use panel::prelude::*;
 use relm4::actions::{ActionGroupName, RelmAction, RelmActionGroup};
-use relm4::factory::{DynamicIndex, FactoryPrototype, FactoryVecDeque};
+use relm4::factory::{DynamicIndex, FactoryComponent};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
-use relm4::{gtk, send, Sender};
+use relm4::{gtk, panel, Sender};
 
 use crate::util;
 use crate::AppMsg;
@@ -39,7 +38,53 @@ pub struct Directory {
 }
 
 impl Directory {
-    pub fn new(dir: &Path) -> Self {
+    /// Returns the listed directory.
+    pub fn dir(&self) -> PathBuf {
+        self.directory_list.file().and_then(|f| f.path()).unwrap()
+    }
+}
+
+/// Used to communicate the file selection status to the parent widget.
+#[derive(Debug)]
+pub enum Selection {
+    /// A single-file selection.
+    File(PathBuf),
+
+    /// No file is selected.
+    None,
+}
+
+pub struct DirectoryWidgets;
+
+impl FactoryComponent<panel::Paned, AppMsg> for Directory {
+    type Widgets = DirectoryWidgets;
+    type InitParams = PathBuf;
+    type Input = ();
+    type Output = AppMsg;
+    type Root = gtk::ScrolledWindow;
+    type Command = ();
+    type CommandOutput = ();
+
+    fn output_to_parent_msg(output: Self::Output) -> Option<AppMsg> {
+        Some(output)
+    }
+
+    fn init_root(&self) -> Self::Root {
+        relm4::view! {
+            root = gtk::ScrolledWindow {
+                set_width_request: WIDTH,
+                set_hscrollbar_policy: gtk::PolicyType::Never,
+            }
+        }
+        root
+    }
+
+    fn init_model(
+        dir: Self::InitParams,
+        _index: &DynamicIndex,
+        _input: &Sender<Self::Input>,
+        _output: &Sender<Self::Output>,
+    ) -> Self {
         assert!(dir.is_dir());
 
         let directory_list = gtk::DirectoryList::new(
@@ -70,47 +115,26 @@ impl Directory {
         }
     }
 
-    /// Returns the listed directory.
-    pub fn dir(&self) -> PathBuf {
-        self.directory_list.file().and_then(|f| f.path()).unwrap()
-    }
-}
-
-/// Used to communicate the file selection status to the parent widget.
-#[derive(Debug)]
-pub enum Selection {
-    /// A single-file selection.
-    File(PathBuf),
-
-    /// No file is selected.
-    None,
-}
-
-#[derive(Debug)]
-pub struct FactoryWidgets {
-    root: gtk::ScrolledWindow,
-}
-
-impl FactoryPrototype for Directory {
-    type Factory = FactoryVecDeque<Self>;
-    type Widgets = FactoryWidgets;
-    type Root = gtk::ScrolledWindow;
-    type View = panel::Paned;
-    type Msg = AppMsg;
-
-    fn init_view(&self, _index: &DynamicIndex, sender: Sender<AppMsg>) -> FactoryWidgets {
+    fn init_widgets(
+        &mut self,
+        _index: &DynamicIndex,
+        root: &Self::Root,
+        _returned_widget: &gtk::Widget,
+        _input: &Sender<Self::Input>,
+        output: &Sender<Self::Output>,
+    ) -> Self::Widgets {
         let factory = gtk::SignalListItemFactory::new();
 
         let dir = self.dir();
         factory.connect_setup(clone!(
             @strong dir,
-            @strong sender,
+            @strong output,
             @weak self.list_model as selection,
         => move |_, list_item| {
-            build_list_item_view(dir.clone(), &selection, list_item, &sender);
+            build_list_item_view(dir.clone(), &selection, list_item, &output);
         }));
 
-        let sender_ = sender.clone();
+        let sender_ = output.clone();
         self.list_model
             .connect_selection_changed(move |selection, _, _| {
                 send_new_selection(selection, &sender_);
@@ -124,34 +148,22 @@ impl FactoryPrototype for Directory {
         let dir = self.dir();
         list_view.connect_activate(clone!(
             @strong dir,
-            @strong sender,
+            @strong output,
             @weak self.list_model as list_model,
         => move |_, position| {
             if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
                 let info = item.downcast_ref::<gio::FileInfo>().unwrap();
                 let path = dir.join(info.name());
-                open_application_for_path(&path, &sender);
+                open_application_for_path(&path, &output);
             }
         }));
 
-        let scroller = gtk::ScrolledWindow::builder()
-            .width_request(WIDTH)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .child(&list_view)
-            .build();
-
-        let drop_target = new_drop_target_for_dir(dir, sender);
+        let drop_target = new_drop_target_for_dir(dir, output.clone());
         list_view.add_controller(&drop_target);
 
-        FactoryWidgets { root: scroller }
-    }
+        root.set_child(Some(&list_view));
 
-    fn position(&self, _index: &DynamicIndex) {}
-
-    fn view(&self, _index: &DynamicIndex, _widgets: &FactoryWidgets) {}
-
-    fn root_widget(widgets: &FactoryWidgets) -> &gtk::ScrolledWindow {
-        &widgets.root
+        DirectoryWidgets
     }
 }
 
@@ -315,7 +327,7 @@ fn register_context_actions(
 
     group.add_action(RelmAction::<OpenChooserAction>::new_with_target_value(
         clone!(@strong sender => move |_, path: PathBuf| {
-            send!(sender, AppMsg::ChooseAndLaunchApp(path));
+            sender.send(AppMsg::ChooseAndLaunchApp(path));
         }),
     ));
 
@@ -354,7 +366,7 @@ fn register_context_actions(
                         })();
 
                         if let Err(err) = res {
-                            send!(sender, AppMsg::Error(err.into()));
+                            sender.send(AppMsg::Error(err.into()));
                         }
 
                         rename_popover.popdown();
@@ -375,7 +387,7 @@ fn register_context_actions(
 
     let actions = group.into_action_group();
     list_item_view.insert_action_group(
-        <DirectoryListRightClickActionGroup as ActionGroupName>::group_name(),
+        <DirectoryListRightClickActionGroup as ActionGroupName>::NAME,
         Some(&actions),
     );
 }
@@ -414,7 +426,7 @@ fn new_drop_target_for_dir(dir: PathBuf, sender: Sender<AppMsg>) -> gtk::DropTar
         let res = file.move_(&destination, gio::FileCopyFlags::NONE, gio::Cancellable::NONE, None);
 
         if let Err(err) = res {
-            send!(sender, AppMsg::Error(err.into()));
+            sender.send(AppMsg::Error(err.into()));
             return false;
         }
 
@@ -431,6 +443,7 @@ fn send_new_selection(selection: &gtk::SingleSelection, sender: &Sender<AppMsg>)
 
         let directory_list = selection
             .model()
+            .unwrap()
             .downcast::<gtk::SortListModel>()
             .unwrap()
             .model()
@@ -444,7 +457,7 @@ fn send_new_selection(selection: &gtk::SingleSelection, sender: &Sender<AppMsg>)
         Selection::None
     };
 
-    send!(sender, AppMsg::NewSelection(selection));
+    sender.send(AppMsg::NewSelection(selection));
 }
 
 /// Handles the right click operation on an individual list item.
@@ -521,7 +534,7 @@ fn open_application_for_path(path: &Path, sender: &Sender<AppMsg>) {
         &format!("file://{}", path.display()),
         None::<&gio::AppLaunchContext>,
     ) {
-        send!(sender, AppMsg::Error(e.into()));
+        sender.send(AppMsg::Error(e.into()));
     }
 }
 

@@ -10,11 +10,11 @@ use gtk::{gdk, gio, glib};
 use log::*;
 use mime::Mime;
 use relm4::gtk::prelude::*;
-use relm4::{gtk, ComponentUpdate, Sender, Widgets};
+use relm4::{adw, gtk, ComponentParts, ComponentSender, SimpleComponent};
 use sourceview::prelude::*;
 use sourceview5 as sourceview;
 
-use crate::{util, AppModel, AppMsg, Model};
+use crate::util;
 
 /// The buffer size used to read the beginning of a file to predict its mime type and preview its
 /// contents.
@@ -48,24 +48,119 @@ pub struct FilePreviewModel {
     file: Option<FileInfo>,
 }
 
-impl Model for FilePreviewModel {
-    type Msg = FilePreviewMsg;
+#[relm4::component(pub)]
+impl SimpleComponent for FilePreviewModel {
     type Widgets = FilePreviewWidgets;
-    type Components = ();
-}
+    type InitParams = ();
+    type Input = FilePreviewMsg;
+    type Output = ();
 
-impl ComponentUpdate<AppModel> for FilePreviewModel {
-    fn init_model(_parent_model: &AppModel) -> Self {
-        FilePreviewModel { file: None }
+    view! {
+        adw::Clamp {
+            gtk::Box {
+                add_css_class: "file-preview-widget",
+                set_baseline_position: gtk::BaselinePosition::Center,
+                set_orientation: gtk::Orientation::Vertical,
+                set_valign: gtk::Align::Center,
+                #[watch]
+                set_visible: model.file.is_some(),
+
+                gtk::Box {
+                    add_css_class: "file-preview",
+
+                    #[name = "image"]
+                    gtk::Image {
+                        set_visible: false,
+                        set_hexpand: true,
+                        set_icon_size: gtk::IconSize::Large,
+                    },
+
+                    #[name = "picture"]
+                    gtk::Picture {
+                        add_css_class: "bordered",
+                        set_visible: false,
+                        set_hexpand: true,
+                    },
+
+                    #[name = "text_container"]
+                    gtk::ScrolledWindow {
+                        add_css_class: "bordered",
+                        set_hexpand: true,
+                        set_propagate_natural_height: true,
+                        set_visible: false,
+                        set_overflow: gtk::Overflow::Hidden,
+
+                        #[name = "text"]
+                        sourceview::View {
+                            add_css_class: "file-preview-source",
+                            set_cursor_visible: false,
+                            set_editable: false,
+                            set_monospace: true,
+                        }
+                    },
+                },
+
+                gtk::Grid {
+                    add_css_class: "file-preview-info",
+                    attach[0, 0, 2, 1]: file_name = &gtk::Label {
+                        add_css_class: "file-name",
+                        set_hexpand: true,
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach[0, 1, 2, 1]: file_type = &gtk::Label {
+                        #[iterate]
+                        add_css_class: ["file-type", "dim-label"],
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach[0, 2, 2, 1] = &gtk::Label {
+                        set_label: "Information",
+                        add_css_class: "section-title",
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach[0, 3, 1, 1] = &gtk::Label {
+                        set_label: "Created",
+                        #[iterate]
+                        add_css_class: ["info-name", "dim-label"],
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach[1, 3, 1, 1]: created = &gtk::Label {
+                        add_css_class: "info-value",
+                        set_halign: gtk::Align::End,
+                    },
+                    attach[0, 4, 1, 1] = &gtk::Label {
+                        set_label: "Modified",
+                        #[iterate]
+                        add_css_class: ["info-name", "dim-label"],
+                        set_halign: gtk::Align::Start,
+                    },
+                    attach[1, 4, 1, 1]: modified = &gtk::Label {
+                        add_css_class: "info-value",
+                        set_halign: gtk::Align::End,
+                    },
+                }
+            }
+        }
     }
 
-    fn update(
-        &mut self,
-        msg: FilePreviewMsg,
-        _components: &(),
-        _sender: Sender<FilePreviewMsg>,
-        _parent_sender: Sender<AppMsg>,
-    ) {
+    fn init(_: (), root: &Self::Root, _sender: &ComponentSender<Self>) -> ComponentParts<Self> {
+        let model = FilePreviewModel { file: None };
+
+        let widgets = view_output!();
+
+        let buffer = widgets
+            .text
+            .buffer()
+            .downcast::<sourceview::Buffer>()
+            .expect("sourceview was not backed by sourceview buffer");
+
+        if let Some(scheme) = &sourceview::StyleSchemeManager::new().scheme("oblivion") {
+            buffer.set_style_scheme(Some(scheme));
+        }
+
+        ComponentParts { model, widgets }
+    }
+
+    fn update(&mut self, msg: FilePreviewMsg, _sender: &ComponentSender<Self>) {
         info!("received message: {:?}", msg);
 
         self.file = match msg {
@@ -147,142 +242,46 @@ impl ComponentUpdate<AppModel> for FilePreviewModel {
             }
         }
     }
-}
 
-#[derive(Debug)]
-pub enum FilePreviewMsg {
-    /// Update the preview to show the contents of a new file.
-    NewSelection(PathBuf),
-
-    /// Empty the contents of the preview.
-    Hide,
-}
-
-#[relm4_macros::widget(pub)]
-impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
-    view! {
-        adw::Clamp {
-            set_child = Some(&gtk::Box) {
-                add_css_class: "file-preview-widget",
-                set_baseline_position: gtk::BaselinePosition::Center,
-                set_orientation: gtk::Orientation::Vertical,
-                set_valign: gtk::Align::Center,
-                set_visible: watch! { model.file.is_some() },
-
-                append = &gtk::Box {
-                    add_css_class: "file-preview",
-                    append: image = &gtk::Image {
-                        set_visible: false,
-                        set_hexpand: true,
-                        set_icon_size: gtk::IconSize::Large,
-                    },
-                    append: picture = &gtk::Picture {
-                        add_css_class: "bordered",
-                        set_visible: false,
-                        set_hexpand: true,
-                    },
-                    append: text_container = &gtk::ScrolledWindow {
-                        add_css_class: "bordered",
-                        set_hexpand: true,
-                        set_propagate_natural_height: true,
-                        set_visible: false,
-                        set_overflow: gtk::Overflow::Hidden,
-
-                        set_child: text = Some(&sourceview::View) {
-                            add_css_class: "file-preview-source",
-                            set_cursor_visible: false,
-                            set_editable: false,
-                            set_monospace: true,
-                        }
-                    },
-                },
-
-                append = &gtk::Grid {
-                    add_css_class: "file-preview-info",
-                    attach(0, 0, 2, 1): file_name = &gtk::Label {
-                        add_css_class: "file-name",
-                        set_hexpand: true,
-                        set_halign: gtk::Align::Start,
-                    },
-                    attach(0, 1, 2, 1): file_type = &gtk::Label {
-                        add_css_class: iterate!(["file-type", "dim-label"]),
-                        set_halign: gtk::Align::Start,
-                    },
-                    attach(0, 2, 2, 1) = &gtk::Label {
-                        set_label: "Information",
-                        add_css_class: "section-title",
-                        set_halign: gtk::Align::Start,
-                    },
-                    attach(0, 3, 1, 1) = &gtk::Label {
-                        set_label: "Created",
-                        add_css_class: iterate!(["info-name", "dim-label"]),
-                        set_halign: gtk::Align::Start,
-                    },
-                    attach(1, 3, 1, 1): created = &gtk::Label {
-                        add_css_class: "info-value",
-                        set_halign: gtk::Align::End,
-                    },
-                    attach(0, 4, 1, 1) = &gtk::Label {
-                        set_label: "Modified",
-                        add_css_class: iterate!(["info-name", "dim-label"]),
-                        set_halign: gtk::Align::Start,
-                    },
-                    attach(1, 4, 1, 1): modified = &gtk::Label {
-                        add_css_class: "info-value",
-                        set_halign: gtk::Align::End,
-                    },
-                }
-            }
-        }
-    }
-
-    fn post_init(&self) {
-        let buffer = text
-            .buffer()
-            .downcast::<sourceview::Buffer>()
-            .expect("sourceview was not backed by sourceview buffer");
-
-        if let Some(scheme) = &sourceview::StyleSchemeManager::new().scheme("oblivion") {
-            buffer.set_style_scheme(Some(scheme));
-        }
-    }
-
-    fn pre_view(&self) {
-        let file = match &model.file {
+    fn pre_view(&self, widgets: &mut Self::Widgets) {
+        let file = match &self.file {
             Some(file) => file,
             None => return,
         };
 
-        self.file_name.set_text(
+        widgets.file_name.set_text(
             &file
                 .path
                 .file_name()
                 .expect("file must have a name")
                 .to_string_lossy(),
         );
-        self.file_type
+        widgets
+            .file_type
             .set_text(&format!("{} — {}", file.mime, glib::format_size(file.size),));
-        self.created.set_text(&format_system_time(file.created));
-        self.modified.set_text(&format_system_time(file.modified));
+        widgets.created.set_text(&format_system_time(file.created));
+        widgets
+            .modified
+            .set_text(&format_system_time(file.modified));
 
-        self.picture.set_visible(false);
-        self.image.set_visible(false);
-        self.text_container.set_visible(false);
+        widgets.picture.set_visible(false);
+        widgets.image.set_visible(false);
+        widgets.text_container.set_visible(false);
 
         match &file.preview {
             FilePreview::Image(file) => {
-                self.picture.set_file(Some(file));
-                self.picture.set_visible(true);
+                widgets.picture.set_file(Some(file));
+                widgets.picture.set_visible(true);
             }
             FilePreview::Icon(paintable) => {
-                self.image.set_paintable(Some(paintable));
-                self.image.set_visible(true);
+                widgets.image.set_paintable(Some(paintable));
+                widgets.image.set_visible(true);
             }
             FilePreview::Text(text) => {
-                self.text.buffer().set_text(text);
-                self.text_container.set_visible(true);
+                widgets.text.buffer().set_text(text);
+                widgets.text_container.set_visible(true);
 
-                let buffer = self
+                let buffer = widgets
                     .text
                     .buffer()
                     .downcast::<sourceview::Buffer>()
@@ -292,6 +291,15 @@ impl Widgets<FilePreviewModel, AppModel> for FilePreviewWidgets {
             }
         }
     }
+}
+
+#[derive(Debug)]
+pub enum FilePreviewMsg {
+    /// Update the preview to show the contents of a new file.
+    NewSelection(PathBuf),
+
+    /// Empty the contents of the preview.
+    Hide,
 }
 
 fn read_start_of_file(path: &Path) -> io::Result<Vec<u8>> {

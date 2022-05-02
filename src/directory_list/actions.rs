@@ -13,9 +13,7 @@ impl ActionName for OpenDefaultAction {
     type Target = PathBuf;
     type State = ();
 
-    fn name() -> &'static str {
-        "open-default"
-    }
+    const NAME: &'static str = "open-default";
 }
 
 pub struct OpenChooserAction;
@@ -25,9 +23,7 @@ impl ActionName for OpenChooserAction {
     type Target = PathBuf;
     type State = ();
 
-    fn name() -> &'static str {
-        "open-chooser"
-    }
+    const NAME: &'static str = "open-chooser";
 }
 
 pub struct RenameAction;
@@ -37,9 +33,7 @@ impl ActionName for RenameAction {
     type Target = PathBuf;
     type State = ();
 
-    fn name() -> &'static str {
-        "rename"
-    }
+    const NAME: &'static str = "rename";
 }
 
 pub struct TrashFileAction;
@@ -49,7 +43,5 @@ impl ActionName for TrashFileAction {
     type Target = PathBuf;
     type State = ();
 
-    fn name() -> &'static str {
-        "trash-file"
-    }
+    const NAME: &'static str = "trash-file";
 }
