@@ -4,68 +4,63 @@
 //! `Show` message, and supports displaying only a single button to dismiss.
 
 use relm4::gtk::{self, prelude::*};
-use relm4::{send, ComponentUpdate, Model, Sender, Widgets};
-use relm4_components::ParentWindow;
+use relm4::{ComponentParts, ComponentSender, SimpleComponent};
 
-use super::AppModel;
-
+#[derive(Debug)]
 pub struct AlertModel {
     is_active: bool,
     text: String,
 }
 
+#[derive(Debug)]
 pub enum AlertMsg {
     Show { text: String },
     Response(gtk::ResponseType),
 }
 
-impl Model for AlertModel {
-    type Msg = AlertMsg;
+#[relm4::component(pub)]
+impl SimpleComponent for AlertModel {
     type Widgets = AlertWidgets;
-    type Components = ();
-}
+    type InitParams = ();
+    type Input = AlertMsg;
+    type Output = ();
 
-impl ComponentUpdate<AppModel> for AlertModel {
-    fn init_model(_parent_model: &AppModel) -> Self {
-        AlertModel {
-            is_active: false,
-            text: String::default(),
+    view! {
+        dialog = gtk::MessageDialog {
+            set_message_type: gtk::MessageType::Error,
+            #[watch]
+            set_visible: model.is_active,
+            connect_response[sender] => move |_, response| {
+                sender.input.send(AlertMsg::Response(response));
+            },
+            set_text: Some("Something went wrong"),
+            #[watch]
+            set_secondary_text: Some(&model.text),
+            set_modal: true,
+            add_button: ("OK", gtk::ResponseType::Accept),
         }
     }
 
-    fn update(
-        &mut self,
-        msg: AlertMsg,
-        _components: &(),
-        _sender: Sender<AlertMsg>,
-        _parent_sender: Sender<<AppModel as Model>::Msg>,
-    ) {
-        match msg {
-            AlertMsg::Show { text: message } => {
+    fn init(_: (), root: &Self::Root, sender: &ComponentSender<Self>) -> ComponentParts<Self> {
+        let model = AlertModel {
+            is_active: false,
+            text: String::default(),
+        };
+
+        let widgets = view_output!();
+
+        ComponentParts { model, widgets }
+    }
+
+    fn update(&mut self, input: Self::Input, _sender: &ComponentSender<Self>) {
+        match input {
+            AlertMsg::Show { text } => {
+                self.text = text;
                 self.is_active = true;
-                self.text = message;
             }
             AlertMsg::Response(_) => {
                 self.is_active = false;
             }
-        }
-    }
-}
-
-#[relm4_macros::widget(pub)]
-impl Widgets<AlertModel, AppModel> for AlertWidgets {
-    view! {
-        dialog = gtk::MessageDialog {
-            set_transient_for: parent!(parent_widgets.parent_window().as_ref()),
-            set_message_type: gtk::MessageType::Error,
-            set_visible: watch!(model.is_active),
-            connect_response(sender) => move |_, response| {
-                send!(sender, AlertMsg::Response(response));
-            },
-            set_text: Some("Something went wrong"),
-            set_secondary_text: watch!(Some(&model.text)),
-            set_modal: true,
-            add_button: args!("OK", gtk::ResponseType::Accept),
         }
     }
 }

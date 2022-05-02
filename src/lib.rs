@@ -7,13 +7,14 @@
 #![warn(clippy::print_stdout)]
 #![warn(clippy::todo)]
 
+use std::convert::identity;
 use std::path::{Component, Path, PathBuf};
 
 use gtk::{gio, prelude::*};
 use log::*;
 use relm4::factory::FactoryVecDeque;
-use relm4::{gtk, send, AppUpdate, Model, RelmComponent, Sender, Widgets};
-use relm4_components::ParentWindow;
+use relm4::{gtk, panel, ComponentBuilder, ComponentParts, ComponentSender, Controller};
+use relm4::{ComponentController, SimpleComponent};
 
 mod alert;
 mod config;
@@ -30,8 +31,16 @@ use crate::places_sidebar::PlacesSidebarModel;
 
 #[derive(Debug)]
 pub struct AppModel {
+    /// The directory listed by the leftmost column.
     root: PathBuf,
-    directories: FactoryVecDeque<Directory>,
+
+    /// The directory listings. This factory acts as a stack, where new directories are pushed and
+    /// popped relative to the root as the user clicks on new directory entries.
+    directories: FactoryVecDeque<panel::Paned, Directory, AppMsg>,
+
+    error_alert: Controller<AlertModel>,
+    file_preview: Controller<FilePreviewModel>,
+    places_sidebar: Controller<PlacesSidebarModel>,
 
     /// Whether the directory panes scroll window should update its scroll position to the upper
     /// bound on the next view update.
@@ -44,39 +53,10 @@ pub struct AppModel {
 }
 
 impl AppModel {
-    pub fn new(root: &Path) -> AppModel {
-        let root = if !root.is_dir() {
-            root.parent().unwrap_or(root)
-        } else {
-            root
-        };
-
-        let state = State::read()
-            .map_err(|e| {
-                warn!("unable to read application state: {}", e);
-                e
-            })
-            .unwrap_or_default();
-
-        info!("starting with application state: {:?}", state);
-
-        let mut model = AppModel {
-            root: root.to_owned(),
-            directories: FactoryVecDeque::new(),
-            update_directory_scroll_position: false,
-            open_app_for_path: None,
-            state,
-        };
-
-        model.directories.push_back(Directory::new(root));
-
-        model
-    }
-
     /// Returns the deepest directory that is listed (the rightmost listing).
     pub fn last_dir(&self) -> PathBuf {
         self.directories
-            .get(self.directories.len() - 1)
+            .try_get(self.directories.len() - 1)
             .expect("there must be at least one directory listed")
             .dir()
     }
@@ -105,107 +85,22 @@ pub enum AppMsg {
     ChooseAndLaunchApp(PathBuf),
 }
 
-impl Model for AppModel {
-    type Msg = AppMsg;
+#[relm4::component(pub)]
+impl SimpleComponent for AppModel {
     type Widgets = AppWidgets;
-    type Components = AppComponents;
-}
+    type InitParams = PathBuf;
+    type Input = AppMsg;
+    type Output = ();
 
-impl AppUpdate for AppModel {
-    fn update(&mut self, msg: AppMsg, components: &AppComponents, _sender: Sender<AppMsg>) -> bool {
-        info!("received message: {:?}", msg);
-
-        self.open_app_for_path = None;
-        self.update_directory_scroll_position = false;
-
-        match msg {
-            AppMsg::Error(err) => {
-                let error_alert = &components.error_alert;
-                send!(
-                    error_alert,
-                    AlertMsg::Show {
-                        text: err.to_string()
-                    }
-                );
-            }
-            AppMsg::NewSelection(Selection::File(path)) => {
-                let mut last_dir = self.last_dir();
-
-                let diff = pathdiff::diff_paths(&path, &last_dir)
-                    .expect("new selection must be relative to the listed directories");
-
-                info!(
-                    "new selection: {:?}, last dir: {:?}, diff: {:?}",
-                    path, last_dir, diff
-                );
-
-                for component in diff.components() {
-                    match component {
-                        Component::ParentDir => {
-                            self.directories.pop_back();
-                            last_dir.pop();
-                        }
-                        Component::Normal(name) => {
-                            let component_path = last_dir.join(name);
-                            if component_path.is_dir() {
-                                self.directories.push_back(Directory::new(&component_path));
-                                last_dir = component_path;
-                            }
-                        }
-                        _ => unreachable!("unexpected path component: {:?}", component),
-                    }
-                }
-
-                let file_preview = &components.file_preview;
-                send!(file_preview, FilePreviewMsg::NewSelection(path));
-
-                self.update_directory_scroll_position = true;
-            }
-            AppMsg::NewSelection(Selection::None) => {
-                let file_preview = &components.file_preview;
-                send!(file_preview, FilePreviewMsg::Hide);
-
-                self.update_directory_scroll_position = true;
-            }
-            AppMsg::NewRoot(new_root) => {
-                info!("new root: {:?}", new_root);
-
-                self.directories.clear();
-
-                self.root = new_root;
-                self.directories.push_back(Directory::new(&self.root));
-
-                let file_preview = &components.file_preview;
-                send!(file_preview, FilePreviewMsg::Hide);
-
-                self.update_directory_scroll_position = true;
-            }
-            AppMsg::ChooseAndLaunchApp(path) => self.open_app_for_path = Some(path),
-        }
-
-        true
-    }
-}
-
-#[derive(relm4_macros::Components)]
-pub struct AppComponents {
-    error_alert: RelmComponent<AlertModel, AppModel>,
-    file_preview: RelmComponent<FilePreviewModel, AppModel>,
-    places_sidebar: RelmComponent<PlacesSidebarModel, AppModel>,
-}
-
-#[relm4_macros::widget(pub)]
-impl Widgets<AppModel, ()> for AppWidgets {
     view! {
         main_window = gtk::ApplicationWindow {
-            set_default_size: args!(model.state.width, model.state.height),
+            set_default_size: (state.width, state.height),
             set_title: Some("fm"),
             set_child = Some(&gtk::Paned) {
-                set_start_child: components.places_sidebar.root_widget(),
+                set_start_child: places_sidebar.widget(),
                 set_end_child: directory_panes_scroller = &gtk::ScrolledWindow {
-                    set_child = Some(&panel::Paned) {
-                        factory!(model.directories),
-                        append: components.file_preview.root_widget(),
+                    set_child: directory_panes = Some(&panel::Paned) {
+                        append: file_preview.widget(),
                     },
                 },
                 set_resize_end_child: true,
@@ -233,22 +128,136 @@ impl Widgets<AppModel, ()> for AppWidgets {
         }
     }
 
-    fn post_init() {
+    fn init(
+        dir: PathBuf,
+        root: &Self::Root,
+        sender: &ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
+        let dir = if !dir.is_dir() {
+            dir.parent().unwrap_or(&dir)
+        } else {
+            &dir
+        };
+
+        let state = State::read()
+            .map_err(|e| {
+                warn!("unable to read application state: {}", e);
+                e
+            })
+            .unwrap_or_default();
+
+        info!("starting with application state: {:?}", state);
+
+        let file_preview = ComponentBuilder::new().launch(()).detach();
+
+        let places_sidebar = ComponentBuilder::new()
+            .launch(dir.to_path_buf())
+            .forward(&sender.input, identity);
+
+        let widgets = view_output!();
+
+        let mut model = AppModel {
+            root: dir.to_owned(),
+            directories: FactoryVecDeque::new(widgets.directory_panes.clone(), &sender.input),
+            error_alert: ComponentBuilder::new()
+                .transient_for(widgets.main_window.clone())
+                .launch(())
+                .detach(),
+            file_preview,
+            places_sidebar,
+            update_directory_scroll_position: false,
+            open_app_for_path: None,
+            state,
+        };
+
+        model.directories.push_back(dir.to_path_buf());
+        model.directories.render_changes();
+
         // TODO: There's sometimes a delay in updating the adjustment upper bound when a new pane
         // is added, causing this code to not trigger at the right time. Needs more investigation.
-        directory_panes_scroller
+        widgets
+            .directory_panes_scroller
             .hadjustment()
             .connect_notify(Some("upper"), |this, _| {
                 set_adjustment_to_upper_bound(this);
             });
+
+        ComponentParts { model, widgets }
     }
 
-    fn post_view(&mut self) {
-        if model.state.is_maximized {
-            self.main_window.maximize();
+    fn update(&mut self, msg: Self::Input, _sender: &ComponentSender<Self>) {
+        info!("received message: {:?}", msg);
+
+        self.open_app_for_path = None;
+        self.update_directory_scroll_position = false;
+
+        match msg {
+            AppMsg::Error(err) => {
+                self.error_alert.emit(AlertMsg::Show {
+                    text: err.to_string(),
+                });
+            }
+            AppMsg::NewSelection(Selection::File(path)) => {
+                let mut last_dir = self.last_dir();
+
+                let diff = pathdiff::diff_paths(&path, &last_dir)
+                    .expect("new selection must be relative to the listed directories");
+
+                info!(
+                    "new selection: {:?}, last dir: {:?}, diff: {:?}",
+                    path, last_dir, diff
+                );
+
+                for component in diff.components() {
+                    match component {
+                        Component::ParentDir => {
+                            self.directories.pop_back();
+                            last_dir.pop();
+                        }
+                        Component::Normal(name) => {
+                            let component_path = last_dir.join(name);
+                            if component_path.is_dir() {
+                                self.directories.push_back(component_path.clone());
+                                last_dir = component_path;
+                            }
+                        }
+                        _ => unreachable!("unexpected path component: {:?}", component),
+                    }
+                }
+
+                self.file_preview.emit(FilePreviewMsg::NewSelection(path));
+
+                self.directories.render_changes();
+                self.update_directory_scroll_position = true;
+            }
+            AppMsg::NewSelection(Selection::None) => {
+                self.file_preview.emit(FilePreviewMsg::Hide);
+
+                self.update_directory_scroll_position = true;
+            }
+            AppMsg::NewRoot(new_root) => {
+                info!("new root: {:?}", new_root);
+
+                self.directories.clear();
+
+                self.root = new_root;
+                self.directories.push_back(self.root.clone());
+
+                self.file_preview.emit(FilePreviewMsg::Hide);
+
+                self.directories.render_changes();
+                self.update_directory_scroll_position = true;
+            }
+            AppMsg::ChooseAndLaunchApp(path) => self.open_app_for_path = Some(path),
+        }
+    }
+
+    fn post_view(&self, widgets: &mut Self::Widgets) {
+        if self.state.is_maximized {
+            widgets.main_window.maximize();
         }
 
-        if model.update_directory_scroll_position {
+        if self.update_directory_scroll_position {
             // Although this function is already called whenever the hadjustment changes, we also
             // sometimes want to scroll when the adjustment doesn't change.
             //
@@ -256,18 +265,12 @@ impl Widgets<AppModel, ()> for AppWidgets {
             // adjustment won't change, because the total number of panels is the same. However,
             // we still want to scroll over to it because it's new information that the user wants
             // to see.
-            set_adjustment_to_upper_bound(&self.directory_panes_scroller.hadjustment());
+            set_adjustment_to_upper_bound(&widgets.directory_panes_scroller.hadjustment());
         }
 
-        if let Some(path) = &model.open_app_for_path {
-            choose_and_launch_app_for_path(&self.main_window, path);
+        if let Some(path) = &self.open_app_for_path {
+            choose_and_launch_app_for_path(&widgets.main_window, path);
         }
-    }
-}
-
-impl ParentWindow for AppWidgets {
-    fn parent_window(&self) -> Option<gtk::Window> {
-        Some(self.main_window.clone().upcast::<gtk::Window>())
     }
 }
 

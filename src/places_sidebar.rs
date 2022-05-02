@@ -8,32 +8,45 @@
 
 use std::path::{Path, PathBuf};
 
+use glib::clone;
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use relm4::{gtk, send, ComponentUpdate, Model, Sender, Widgets};
+use relm4::{gtk, ComponentParts, ComponentSender, SimpleComponent};
 
-use super::{AppModel, AppMsg};
+use crate::AppMsg;
 
 mod place;
 
 use place::PlaceObject;
 
+#[derive(Debug)]
 pub enum PlacesSidebarMsg {
     SelectionChanged(PathBuf),
 }
 
+#[derive(Debug)]
 pub struct PlacesSidebarModel {
     selection_model: gtk::SingleSelection,
 }
 
-impl Model for PlacesSidebarModel {
-    type Msg = PlacesSidebarMsg;
+#[relm4::component(pub)]
+impl SimpleComponent for PlacesSidebarModel {
     type Widgets = PlacesSidebarWidgets;
-    type Components = ();
-}
+    type InitParams = PathBuf;
+    type Input = PlacesSidebarMsg;
+    type Output = AppMsg;
 
-impl ComponentUpdate<AppModel> for PlacesSidebarModel {
-    fn init_model(parent_model: &AppModel) -> Self {
+    view! {
+        gtk::ScrolledWindow {
+            set_hscrollbar_policy: gtk::PolicyType::Never,
+        }
+    }
+
+    fn init(
+        root_dir: PathBuf,
+        root: &Self::Root,
+        sender: &ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
         let store = gio::ListStore::new(PlaceObject::static_type());
 
         let mut places = vec![PlaceObject::new("Home", &glib::home_dir(), "user-home")];
@@ -68,7 +81,7 @@ impl ComponentUpdate<AppModel> for PlacesSidebarModel {
         // If the root matches an existing place, set the selection to that place.
         let root_place_position = places.iter().position(|place| {
             let path = place.property::<gio::File>("file").path().unwrap();
-            path == parent_model.root
+            path == root_dir
         });
 
         for place in &places {
@@ -84,39 +97,8 @@ impl ComponentUpdate<AppModel> for PlacesSidebarModel {
             selection_model.select_item(pos as u32, true);
         }
 
-        PlacesSidebarModel { selection_model }
-    }
-
-    fn update(
-        &mut self,
-        msg: PlacesSidebarMsg,
-        _components: &(),
-        _sender: Sender<PlacesSidebarMsg>,
-        parent_sender: Sender<AppMsg>,
-    ) {
-        match msg {
-            PlacesSidebarMsg::SelectionChanged(path) => {
-                send!(parent_sender, AppMsg::NewRoot(path));
-            }
-        }
-    }
-}
-
-pub struct PlacesSidebarWidgets {
-    root: gtk::ScrolledWindow,
-}
-
-impl Widgets<PlacesSidebarModel, AppModel> for PlacesSidebarWidgets {
-    type Root = gtk::ScrolledWindow;
-
-    fn init_view(
-        model: &PlacesSidebarModel,
-        _components: &(),
-        sender: Sender<PlacesSidebarMsg>,
-    ) -> Self {
-        let root = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .build();
+        let model = PlacesSidebarModel { selection_model };
+        let widgets = view_output!();
 
         let factory = gtk::SignalListItemFactory::new();
         factory.connect_setup(move |_, list_item| {
@@ -155,15 +137,15 @@ impl Widgets<PlacesSidebarModel, AppModel> for PlacesSidebarWidgets {
             list_item.set_child(Some(&root));
         });
 
-        model
-            .selection_model
-            .connect_selection_changed(move |selection, _, _| {
+        model.selection_model.connect_selection_changed(
+            clone!(@strong sender => move |selection, _, _| {
                 let selected_item = selection.selected_item().unwrap();
                 let place = selected_item.downcast::<PlaceObject>().unwrap();
                 let path = place.property::<gio::File>("file").path().unwrap();
 
-                send!(sender, PlacesSidebarMsg::SelectionChanged(path));
-            });
+                sender.input.send(PlacesSidebarMsg::SelectionChanged(path));
+            }),
+        );
 
         let list_view = gtk::ListView::builder()
             .factory(&factory)
@@ -173,12 +155,14 @@ impl Widgets<PlacesSidebarModel, AppModel> for PlacesSidebarWidgets {
 
         root.set_child(Some(&list_view));
 
-        PlacesSidebarWidgets { root }
+        ComponentParts { model, widgets }
     }
 
-    fn view(&mut self, _model: &PlacesSidebarModel, _sender: Sender<PlacesSidebarMsg>) {}
-
-    fn root_widget(&self) -> gtk::ScrolledWindow {
-        self.root.clone()
+    fn update(&mut self, msg: PlacesSidebarMsg, sender: &ComponentSender<PlacesSidebarModel>) {
+        match msg {
+            PlacesSidebarMsg::SelectionChanged(path) => {
+                sender.output.send(AppMsg::NewRoot(path));
+            }
+        }
     }
 }
