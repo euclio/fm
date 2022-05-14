@@ -10,7 +10,7 @@ license = "MIT"
 adw = { version = "0.1", package = "libadwaita" }
 anyhow = "1.0.51"
 chrono = "0.4.19"
-clap = { version = "3.0.0-rc.7", features = ["derive"] }
+clap = { version = "3.1.18", features = ["derive"] }
 directories = "4.0.1"
 env_logger = "0.9.0"
 log = "0.4.14"
