@@ -69,7 +69,7 @@ impl FactoryComponent<panel::Paned, AppMsg> for Directory {
         Some(output)
     }
 
-    fn init_root() -> Self::Root {
+    fn init_root(&self) -> Self::Root {
         relm4::view! {
             root = gtk::ScrolledWindow {
                 set_width_request: WIDTH,
