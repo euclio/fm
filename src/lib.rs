@@ -12,8 +12,9 @@ use std::path::{Component, Path, PathBuf};
 
 use gtk::{gio, prelude::*};
 use log::*;
+use relm4::component::Controller;
 use relm4::factory::FactoryVecDeque;
-use relm4::{gtk, panel, ComponentBuilder, ComponentParts, ComponentSender, Controller};
+use relm4::{gtk, panel, ComponentBuilder, ComponentParts, ComponentSender};
 use relm4::{ComponentController, SimpleComponent};
 
 mod alert;

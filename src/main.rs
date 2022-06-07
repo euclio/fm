@@ -5,6 +5,9 @@ use anyhow::Result;
 use clap::Parser;
 use log::*;
 use relm4::{gtk, RelmApp};
+use tracing_tree::HierarchicalLayer;
+use tracing_subscriber::{registry::Registry, prelude::*};
+use tracing_log::LogTracer;
 
 use fm::AppModel;
 
@@ -18,7 +21,10 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    env_logger::init();
+    let subscriber = Registry::default().with(HierarchicalLayer::new(2));
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
+    LogTracer::init()?;
 
     let args = Args::parse();
     info!("running with arguments: {:?}", args);
