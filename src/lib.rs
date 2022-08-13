@@ -36,7 +36,7 @@ pub struct AppModel {
 
     /// The directory listings. This factory acts as a stack, where new directories are pushed and
     /// popped relative to the root as the user clicks on new directory entries.
-    directories: FactoryVecDeque<panel::Paned, Directory, AppMsg>,
+    directories: FactoryVecDeque<Directory>,
 
     error_alert: Controller<AlertModel>,
     file_preview: Controller<FilePreviewModel>,
@@ -136,7 +136,7 @@ impl SimpleComponent for AppModel {
     fn init(
         dir: PathBuf,
         root: &Self::Root,
-        sender: &ComponentSender<Self>,
+        sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let dir = if !dir.is_dir() {
             dir.parent().unwrap_or(&dir)
@@ -153,9 +153,9 @@ impl SimpleComponent for AppModel {
 
         info!("starting with application state: {:?}", state);
 
-        let file_preview = ComponentBuilder::new().launch(()).detach();
+        let file_preview = ComponentBuilder::default().launch(()).detach();
 
-        let places_sidebar = ComponentBuilder::new()
+        let places_sidebar = ComponentBuilder::default()
             .launch(dir.to_path_buf())
             .forward(&sender.input, identity);
 
@@ -164,7 +164,7 @@ impl SimpleComponent for AppModel {
         let mut model = AppModel {
             root: dir.to_owned(),
             directories: FactoryVecDeque::new(widgets.directory_panes.clone(), &sender.input),
-            error_alert: ComponentBuilder::new()
+            error_alert: ComponentBuilder::default()
                 .transient_for(widgets.main_window.clone())
                 .launch(())
                 .detach(),
@@ -189,7 +189,7 @@ impl SimpleComponent for AppModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: Self::Input, _sender: &ComponentSender<Self>) {
+    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         info!("received message: {:?}", msg);
 
         self.open_app_for_path = None;

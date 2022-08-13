@@ -8,7 +8,7 @@ use glib::translate::{from_glib_full, IntoGlib};
 use glib::{clone, closure, Object};
 use log::*;
 use relm4::actions::{ActionGroupName, RelmAction, RelmActionGroup};
-use relm4::factory::{DynamicIndex, FactoryComponent};
+use relm4::factory::{DynamicIndex, FactoryComponent, FactoryComponentSender};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
 use relm4::{gtk, panel, Sender};
 
@@ -56,13 +56,14 @@ pub enum Selection {
 
 pub struct DirectoryWidgets;
 
-impl FactoryComponent<panel::Paned, AppMsg> for Directory {
+impl FactoryComponent for Directory {
+    type ParentMsg = AppMsg;
+    type ParentWidget = panel::Paned;
     type Widgets = DirectoryWidgets;
-    type InitParams = PathBuf;
+    type Init = PathBuf;
     type Input = ();
     type Output = AppMsg;
     type Root = gtk::ScrolledWindow;
-    type Command = ();
     type CommandOutput = ();
 
     fn output_to_parent_msg(output: Self::Output) -> Option<AppMsg> {
@@ -80,10 +81,9 @@ impl FactoryComponent<panel::Paned, AppMsg> for Directory {
     }
 
     fn init_model(
-        dir: Self::InitParams,
+        dir: Self::Init,
         _index: &DynamicIndex,
-        _input: &Sender<Self::Input>,
-        _output: &Sender<Self::Output>,
+        _sender: FactoryComponentSender<Self>,
     ) -> Self {
         assert!(dir.is_dir());
 
@@ -120,21 +120,20 @@ impl FactoryComponent<panel::Paned, AppMsg> for Directory {
         _index: &DynamicIndex,
         root: &Self::Root,
         _returned_widget: &gtk::Widget,
-        _input: &Sender<Self::Input>,
-        output: &Sender<Self::Output>,
+        sender: FactoryComponentSender<Self>,
     ) -> Self::Widgets {
         let factory = gtk::SignalListItemFactory::new();
 
         let dir = self.dir();
         factory.connect_setup(clone!(
             @strong dir,
-            @strong output,
+            @strong sender.output as output,
             @weak self.list_model as selection,
         => move |_, list_item| {
             build_list_item_view(dir.clone(), &selection, list_item, &output);
         }));
 
-        let sender_ = output.clone();
+        let sender_ = sender.output.clone();
         self.list_model
             .connect_selection_changed(move |selection, _, _| {
                 send_new_selection(selection, &sender_);
@@ -148,7 +147,7 @@ impl FactoryComponent<panel::Paned, AppMsg> for Directory {
         let dir = self.dir();
         list_view.connect_activate(clone!(
             @strong dir,
-            @strong output,
+            @strong sender.output as output,
             @weak self.list_model as list_model,
         => move |_, position| {
             if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
@@ -158,7 +157,7 @@ impl FactoryComponent<panel::Paned, AppMsg> for Directory {
             }
         }));
 
-        let drop_target = new_drop_target_for_dir(dir, output.clone());
+        let drop_target = new_drop_target_for_dir(dir, sender.output.clone());
         list_view.add_controller(&drop_target);
 
         root.set_child(Some(&list_view));

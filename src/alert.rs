@@ -41,7 +41,7 @@ impl SimpleComponent for AlertModel {
         }
     }
 
-    fn init(_: (), root: &Self::Root, sender: &ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(_: (), root: &Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let model = AlertModel {
             is_active: false,
             text: String::default(),
@@ -52,7 +52,7 @@ impl SimpleComponent for AlertModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, input: Self::Input, _sender: &ComponentSender<Self>) {
+    fn update(&mut self, input: Self::Input, _sender: ComponentSender<Self>) {
         match input {
             AlertMsg::Show { text } => {
                 self.text = text;

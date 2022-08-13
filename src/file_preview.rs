@@ -142,7 +142,7 @@ impl SimpleComponent for FilePreviewModel {
         }
     }
 
-    fn init(_: (), root: &Self::Root, _sender: &ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(_: (), root: &Self::Root, _sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let model = FilePreviewModel { file: None };
 
         let widgets = view_output!();
@@ -160,7 +160,7 @@ impl SimpleComponent for FilePreviewModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: FilePreviewMsg, _sender: &ComponentSender<Self>) {
+    fn update(&mut self, msg: FilePreviewMsg, _sender: ComponentSender<Self>) {
         info!("received message: {:?}", msg);
 
         self.file = match msg {

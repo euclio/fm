@@ -45,7 +45,7 @@ impl SimpleComponent for PlacesSidebarModel {
     fn init(
         root_dir: PathBuf,
         root: &Self::Root,
-        sender: &ComponentSender<Self>,
+        sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let store = gio::ListStore::new(PlaceObject::static_type());
 
@@ -158,7 +158,7 @@ impl SimpleComponent for PlacesSidebarModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: PlacesSidebarMsg, sender: &ComponentSender<PlacesSidebarModel>) {
+    fn update(&mut self, msg: PlacesSidebarMsg, sender: ComponentSender<PlacesSidebarModel>) {
         match msg {
             PlacesSidebarMsg::SelectionChanged(path) => {
                 sender.output.send(AppMsg::NewRoot(path));
