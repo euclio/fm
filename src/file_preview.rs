@@ -244,50 +244,49 @@ impl SimpleComponent for FilePreviewModel {
     }
 
     fn pre_view(&self, widgets: &mut Self::Widgets) {
-        let file = match &self.file {
-            Some(file) => file,
-            None => return,
-        };
+        if let Some(file) = &self.file {
+            widgets.file_name.set_text(
+                &file
+                    .path
+                    .file_name()
+                    .expect("file must have a name")
+                    .to_string_lossy(),
+            );
+            widgets.file_type.set_text(&format!(
+                "{} — {}",
+                file.mime,
+                glib::format_size(file.size),
+            ));
+            widgets.created.set_text(&format_system_time(file.created));
+            widgets
+                .modified
+                .set_text(&format_system_time(file.modified));
 
-        widgets.file_name.set_text(
-            &file
-                .path
-                .file_name()
-                .expect("file must have a name")
-                .to_string_lossy(),
-        );
-        widgets
-            .file_type
-            .set_text(&format!("{} — {}", file.mime, glib::format_size(file.size),));
-        widgets.created.set_text(&format_system_time(file.created));
-        widgets
-            .modified
-            .set_text(&format_system_time(file.modified));
+            widgets.picture.set_visible(false);
+            widgets.image.set_visible(false);
+            widgets.text_container.set_visible(false);
 
-        widgets.picture.set_visible(false);
-        widgets.image.set_visible(false);
-        widgets.text_container.set_visible(false);
+            match &file.preview {
+                FilePreview::Image(file) => {
+                    widgets.picture.set_file(Some(file));
+                    widgets.picture.set_visible(true);
+                }
+                FilePreview::Icon(paintable) => {
+                    widgets.image.set_paintable(Some(paintable));
+                    widgets.image.set_visible(true);
+                }
+                FilePreview::Text(text) => {
+                    widgets.text.buffer().set_text(text);
+                    widgets.text_container.set_visible(true);
 
-        match &file.preview {
-            FilePreview::Image(file) => {
-                widgets.picture.set_file(Some(file));
-                widgets.picture.set_visible(true);
-            }
-            FilePreview::Icon(paintable) => {
-                widgets.image.set_paintable(Some(paintable));
-                widgets.image.set_visible(true);
-            }
-            FilePreview::Text(text) => {
-                widgets.text.buffer().set_text(text);
-                widgets.text_container.set_visible(true);
+                    let buffer = widgets
+                        .text
+                        .buffer()
+                        .downcast::<sourceview::Buffer>()
+                        .expect("sourceview was not backed by sourceview buffer");
 
-                let buffer = widgets
-                    .text
-                    .buffer()
-                    .downcast::<sourceview::Buffer>()
-                    .expect("sourceview was not backed by sourceview buffer");
-
-                buffer.set_language(file.language.as_ref());
+                    buffer.set_language(file.language.as_ref());
+                }
             }
         }
     }
