@@ -138,6 +138,11 @@ impl FactoryComponent for Directory {
             .connect_selection_changed(move |selection, _, _| {
                 send_new_selection(selection, &sender_);
             });
+        let sender_ = sender.output.clone();
+        self.list_model
+            .connect_items_changed(move |selection, _, _, _| {
+                send_new_selection(selection, &sender_);
+            });
 
         let list_view = gtk::ListView::builder()
             .factory(&factory)
