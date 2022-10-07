@@ -22,7 +22,7 @@ jobs:
           yum install -y gtk4-devel gtksourceview5-devel libadwaita-devel
           git clone --depth 1 https://gitlab.gnome.org/chergert/libpanel
           cd libpanel
-          meson _build -Dvapi=false -Dintrospection=disabled
+          meson _build -Dvapi=false -Dintrospection=disabled -Ddocs=false
           ninja -C _build install
           cd -
 
