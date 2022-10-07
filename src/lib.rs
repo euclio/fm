@@ -40,7 +40,7 @@ pub struct AppModel {
 
     error_alert: Controller<AlertModel>,
     file_preview: Controller<FilePreviewModel>,
-    places_sidebar: Controller<PlacesSidebarModel>,
+    _places_sidebar: Controller<PlacesSidebarModel>,
 
     /// Whether the directory panes scroll window should update its scroll position to the upper
     /// bound on the next view update.
@@ -88,7 +88,7 @@ pub enum AppMsg {
 #[relm4::component(pub)]
 impl SimpleComponent for AppModel {
     type Widgets = AppWidgets;
-    type InitParams = PathBuf;
+    type Init = PathBuf;
     type Input = AppMsg;
     type Output = ();
 
@@ -157,19 +157,22 @@ impl SimpleComponent for AppModel {
 
         let places_sidebar = ComponentBuilder::default()
             .launch(dir.to_path_buf())
-            .forward(&sender.input, identity);
+            .forward(sender.input_sender(), identity);
 
         let widgets = view_output!();
 
         let mut model = AppModel {
             root: dir.to_owned(),
-            directories: FactoryVecDeque::new(widgets.directory_panes.clone(), &sender.input),
+            directories: FactoryVecDeque::new(
+                widgets.directory_panes.clone(),
+                sender.input_sender(),
+            ),
             error_alert: ComponentBuilder::default()
                 .transient_for(widgets.main_window.clone())
                 .launch(())
                 .detach(),
             file_preview,
-            places_sidebar,
+            _places_sidebar: places_sidebar,
             update_directory_scroll_position: false,
             open_app_for_path: None,
             state,

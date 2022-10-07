@@ -238,6 +238,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fragile"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85dcb89d2b10c5f6133de2efd8c11959ce9dbb46a2f7a4cab208c4eeda6ce1ab"
+
+[[package]]
 name = "futures"
 version = "0.3.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -681,8 +687,8 @@ checksum = "349d5a591cd28b49e1d1037471617a32ddcda5731b99419008085f72d5a53836"
 
 [[package]]
 name = "libpanel"
-version = "0.1.0-alpha-2"
-source = "git+https://gitlab.gnome.org/World/Rust/libpanel-rs#c427d5542856f1f78b8248c60475638794a7e9fa"
+version = "0.1.0-alpha-4"
+source = "git+https://gitlab.gnome.org/World/Rust/libpanel-rs?rev=517d3f0459a9da16d300e2ee0b7508205494f845#517d3f0459a9da16d300e2ee0b7508205494f845"
 dependencies = [
  "futures-core",
  "gdk4",
@@ -696,8 +702,8 @@ dependencies = [
 
 [[package]]
 name = "libpanel-sys"
-version = "0.1.0-alpha-2"
-source = "git+https://gitlab.gnome.org/World/Rust/libpanel-rs#c427d5542856f1f78b8248c60475638794a7e9fa"
+version = "0.1.0-alpha-4"
+source = "git+https://gitlab.gnome.org/World/Rust/libpanel-rs?rev=517d3f0459a9da16d300e2ee0b7508205494f845#517d3f0459a9da16d300e2ee0b7508205494f845"
 dependencies = [
  "gdk4-sys",
  "gio-sys",
@@ -999,12 +1005,13 @@ checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
 
 [[package]]
 name = "relm4"
-version = "0.5.0-beta.2"
-source = "git+https://github.com/Relm4/Relm4?tag=v0.5.0-beta.2#7b0a9387833e6a1d6bf6afbba323451b06b0fb08"
+version = "0.5.0-beta.3"
+source = "git+https://github.com/Relm4/Relm4?tag=v0.5.0-beta.3#cf23f21de3c1a38648db48df1197fd82e74b9862"
 dependencies = [
  "async-broadcast",
  "async-oneshot",
  "flume",
+ "fragile",
  "futures",
  "gtk4",
  "libadwaita",
@@ -1018,8 +1025,8 @@ dependencies = [
 
 [[package]]
 name = "relm4-macros"
-version = "0.5.0-beta.2"
-source = "git+https://github.com/Relm4/Relm4?tag=v0.5.0-beta.2#7b0a9387833e6a1d6bf6afbba323451b06b0fb08"
+version = "0.5.0-beta.3"
+source = "git+https://github.com/Relm4/Relm4?tag=v0.5.0-beta.3#cf23f21de3c1a38648db48df1197fd82e74b9862"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1253,9 +1260,9 @@ dependencies = [
 
 [[package]]
 name = "tracing"
-version = "0.1.35"
+version = "0.1.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a400e31aa60b9d44a52a8ee0343b5b18566b03a8321e0d321f695cf56e940160"
+checksum = "8ce8c33a8d48bd45d624a6e523445fd21ec13d3653cd51f681abf67418f54eb8"
 dependencies = [
  "cfg-if",
  "log",
@@ -1266,9 +1273,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-attributes"
-version = "0.1.22"
+version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11c75893af559bc8e10716548bdef5cb2b983f8e637db9d0e15126b61b484ee2"
+checksum = "4017f8f45139870ca7e672686113917c71c7a6e02d4924eda67186083c03081a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1277,9 +1284,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-core"
-version = "0.1.28"
+version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b7358be39f2f274f322d2aaed611acc57f382e8eb1e5b48cb9ae30933495ce7"
+checksum = "24eb03ba0eab1fd845050058ce5e616558e8f8d8fca633e6b163fe25c797213a"
 dependencies = [
  "once_cell",
 ]

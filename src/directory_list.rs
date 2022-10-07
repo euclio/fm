@@ -10,7 +10,7 @@ use log::*;
 use relm4::actions::{ActionGroupName, RelmAction, RelmActionGroup};
 use relm4::factory::{DynamicIndex, FactoryComponent, FactoryComponentSender};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
-use relm4::{gtk, panel, Sender};
+use relm4::{gtk, panel};
 
 use crate::util;
 use crate::AppMsg;
@@ -57,7 +57,7 @@ pub enum Selection {
 pub struct DirectoryWidgets;
 
 impl FactoryComponent for Directory {
-    type ParentMsg = AppMsg;
+    type ParentInput = AppMsg;
     type ParentWidget = panel::Paned;
     type Widgets = DirectoryWidgets;
     type Init = PathBuf;
@@ -66,7 +66,7 @@ impl FactoryComponent for Directory {
     type Root = gtk::ScrolledWindow;
     type CommandOutput = ();
 
-    fn output_to_parent_msg(output: Self::Output) -> Option<AppMsg> {
+    fn output_to_parent_input(output: Self::Output) -> Option<AppMsg> {
         Some(output)
     }
 
@@ -127,18 +127,18 @@ impl FactoryComponent for Directory {
         let dir = self.dir();
         factory.connect_setup(clone!(
             @strong dir,
-            @strong sender.output as output,
+            @strong sender as sender,
             @weak self.list_model as selection,
         => move |_, list_item| {
-            build_list_item_view(dir.clone(), &selection, list_item, &output);
+            build_list_item_view(dir.clone(), &selection, list_item, &sender);
         }));
 
-        let sender_ = sender.output.clone();
+        let sender_ = sender.clone();
         self.list_model
             .connect_selection_changed(move |selection, _, _| {
                 send_new_selection(selection, &sender_);
             });
-        let sender_ = sender.output.clone();
+        let sender_ = sender.clone();
         self.list_model
             .connect_items_changed(move |selection, _, _, _| {
                 send_new_selection(selection, &sender_);
@@ -152,17 +152,17 @@ impl FactoryComponent for Directory {
         let dir = self.dir();
         list_view.connect_activate(clone!(
             @strong dir,
-            @strong sender.output as output,
+            @strong sender as sender,
             @weak self.list_model as list_model,
         => move |_, position| {
             if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
                 let info = item.downcast_ref::<gio::FileInfo>().unwrap();
                 let path = dir.join(info.name());
-                open_application_for_path(&path, &output);
+                open_application_for_path(&path, &sender);
             }
         }));
 
-        let drop_target = new_drop_target_for_dir(dir, sender.output.clone());
+        let drop_target = new_drop_target_for_dir(dir, sender);
         list_view.add_controller(&drop_target);
 
         root.set_child(Some(&list_view));
@@ -179,7 +179,7 @@ fn build_list_item_view(
     dir: PathBuf,
     selection: &gtk::SingleSelection,
     list_item: &gtk::ListItem,
-    sender: &Sender<AppMsg>,
+    sender: &FactoryComponentSender<Directory>,
 ) {
     let root = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -318,7 +318,7 @@ fn build_rename_popover(parent: &gtk::Widget) -> gtk::Popover {
 fn register_context_actions(
     list_item_view: &gtk::Widget,
     rename_popover: &gtk::Popover,
-    sender: Sender<AppMsg>,
+    sender: FactoryComponentSender<Directory>,
 ) {
     let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
 
@@ -331,7 +331,7 @@ fn register_context_actions(
 
     group.add_action(RelmAction::<OpenChooserAction>::new_with_target_value(
         clone!(@strong sender => move |_, path: PathBuf| {
-            sender.send(AppMsg::ChooseAndLaunchApp(path));
+            sender.output(AppMsg::ChooseAndLaunchApp(path));
         }),
     ));
 
@@ -370,7 +370,7 @@ fn register_context_actions(
                         })();
 
                         if let Err(err) = res {
-                            sender.send(AppMsg::Error(err.into()));
+                            sender.output(AppMsg::Error(err.into()));
                         }
 
                         rename_popover.popdown();
@@ -400,7 +400,10 @@ fn register_context_actions(
 ///
 /// The drop target accepts [`gio::File`]s and rejects files that are already in the same
 /// directory.
-fn new_drop_target_for_dir(dir: PathBuf, sender: Sender<AppMsg>) -> gtk::DropTarget {
+fn new_drop_target_for_dir(
+    dir: PathBuf,
+    sender: FactoryComponentSender<Directory>,
+) -> gtk::DropTarget {
     let drop_target = gtk::DropTarget::builder()
         .actions(gdk::DragAction::MOVE)
         .preload(true)
@@ -430,7 +433,7 @@ fn new_drop_target_for_dir(dir: PathBuf, sender: Sender<AppMsg>) -> gtk::DropTar
         let res = file.move_(&destination, gio::FileCopyFlags::NONE, gio::Cancellable::NONE, None);
 
         if let Err(err) = res {
-            sender.send(AppMsg::Error(err.into()));
+            sender.output(AppMsg::Error(err.into()));
             return false;
         }
 
@@ -441,7 +444,10 @@ fn new_drop_target_for_dir(dir: PathBuf, sender: Sender<AppMsg>) -> gtk::DropTar
 }
 
 /// Notifies the main component of the path of a new selection.
-fn send_new_selection(selection: &gtk::SingleSelection, sender: &Sender<AppMsg>) {
+fn send_new_selection(
+    selection: &gtk::SingleSelection,
+    sender: &FactoryComponentSender<Directory>,
+) {
     let selection = if let Some(item) = selection.selected_item() {
         let file_info = item.downcast::<gio::FileInfo>().unwrap();
 
@@ -461,7 +467,7 @@ fn send_new_selection(selection: &gtk::SingleSelection, sender: &Sender<AppMsg>)
         Selection::None
     };
 
-    sender.send(AppMsg::NewSelection(selection));
+    sender.output(AppMsg::NewSelection(selection));
 }
 
 /// Handles the right click operation on an individual list item.
@@ -531,14 +537,14 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
 }
 
 /// Opens the default application for the given path.
-fn open_application_for_path(path: &Path, sender: &Sender<AppMsg>) {
+fn open_application_for_path(path: &Path, sender: &FactoryComponentSender<Directory>) {
     info!("opening {:?} in external application", path);
 
     if let Err(e) = gio::AppInfo::launch_default_for_uri(
         &format!("file://{}", path.display()),
         None::<&gio::AppLaunchContext>,
     ) {
-        sender.send(AppMsg::Error(e.into()));
+        sender.output(AppMsg::Error(e.into()));
     }
 }
 

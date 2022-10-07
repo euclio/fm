@@ -51,7 +51,7 @@ pub struct FilePreviewModel {
 #[relm4::component(pub)]
 impl SimpleComponent for FilePreviewModel {
     type Widgets = FilePreviewWidgets;
-    type InitParams = ();
+    type Init = ();
     type Input = FilePreviewMsg;
     type Output = ();
 

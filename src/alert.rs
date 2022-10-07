@@ -3,8 +3,8 @@
 //! Inspired by [`relm4_components::alert`], but allows sending the dialog text as part of the
 //! `Show` message, and supports displaying only a single button to dismiss.
 
-use relm4::gtk::{self, prelude::*};
-use relm4::{ComponentParts, ComponentSender, SimpleComponent};
+use gtk::prelude::*;
+use relm4::prelude::*;
 
 #[derive(Debug)]
 pub struct AlertModel {
@@ -21,7 +21,7 @@ pub enum AlertMsg {
 #[relm4::component(pub)]
 impl SimpleComponent for AlertModel {
     type Widgets = AlertWidgets;
-    type InitParams = ();
+    type Init = ();
     type Input = AlertMsg;
     type Output = ();
 
@@ -31,7 +31,7 @@ impl SimpleComponent for AlertModel {
             #[watch]
             set_visible: model.is_active,
             connect_response[sender] => move |_, response| {
-                sender.input.send(AlertMsg::Response(response));
+                sender.input(AlertMsg::Response(response));
             },
             set_text: Some("Something went wrong"),
             #[watch]

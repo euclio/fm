@@ -32,7 +32,7 @@ pub struct PlacesSidebarModel {
 #[relm4::component(pub)]
 impl SimpleComponent for PlacesSidebarModel {
     type Widgets = PlacesSidebarWidgets;
-    type InitParams = PathBuf;
+    type Init = PathBuf;
     type Input = PlacesSidebarMsg;
     type Output = AppMsg;
 
@@ -143,7 +143,7 @@ impl SimpleComponent for PlacesSidebarModel {
                 let place = selected_item.downcast::<PlaceObject>().unwrap();
                 let path = place.property::<gio::File>("file").path().unwrap();
 
-                sender.input.send(PlacesSidebarMsg::SelectionChanged(path));
+                sender.input(PlacesSidebarMsg::SelectionChanged(path));
             }),
         );
 
@@ -161,7 +161,7 @@ impl SimpleComponent for PlacesSidebarModel {
     fn update(&mut self, msg: PlacesSidebarMsg, sender: ComponentSender<PlacesSidebarModel>) {
         match msg {
             PlacesSidebarMsg::SelectionChanged(path) => {
-                sender.output.send(AppMsg::NewRoot(path));
+                sender.output(AppMsg::NewRoot(path));
             }
         }
     }
