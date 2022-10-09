@@ -8,13 +8,12 @@
 #![warn(clippy::todo)]
 
 use std::convert::identity;
-use std::path::{Component, Path, PathBuf};
+use std::path::{self, Path, PathBuf};
 
 use gtk::{gio, prelude::*};
 use log::*;
 use relm4::factory::FactoryVecDeque;
-use relm4::{gtk, panel, ComponentBuilder, ComponentParts, ComponentSender, Controller};
-use relm4::{ComponentController, SimpleComponent};
+use relm4::prelude::*;
 
 mod alert;
 mod config;
@@ -153,9 +152,9 @@ impl SimpleComponent for AppModel {
 
         info!("starting with application state: {:?}", state);
 
-        let file_preview = ComponentBuilder::default().launch(()).detach();
+        let file_preview = FilePreviewModel::builder().launch(()).detach();
 
-        let places_sidebar = ComponentBuilder::default()
+        let places_sidebar = PlacesSidebarModel::builder()
             .launch(dir.to_path_buf())
             .forward(sender.input_sender(), identity);
 
@@ -167,7 +166,7 @@ impl SimpleComponent for AppModel {
                 widgets.directory_panes.clone(),
                 sender.input_sender(),
             ),
-            error_alert: ComponentBuilder::default()
+            error_alert: AlertModel::builder()
                 .transient_for(widgets.main_window.clone())
                 .launch(())
                 .detach(),
@@ -219,11 +218,11 @@ impl SimpleComponent for AppModel {
 
                 for component in diff.components() {
                     match component {
-                        Component::ParentDir => {
+                        path::Component::ParentDir => {
                             directories.pop_back();
                             last_dir.pop();
                         }
-                        Component::Normal(name) => {
+                        path::Component::Normal(name) => {
                             let component_path = last_dir.join(name);
                             if component_path.is_dir() {
                                 directories.push_back(component_path.clone());
