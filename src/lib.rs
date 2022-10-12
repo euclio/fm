@@ -93,24 +93,41 @@ impl SimpleComponent for AppModel {
 
     view! {
         #[name = "main_window"]
-        gtk::Window {
+        adw::Window {
             set_default_size: (state.width, state.height),
             set_title: Some("fm"),
 
-            gtk::Paned {
-                set_start_child: Some(places_sidebar.widget()),
+            gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
 
-                #[wrap(Some)]
-                set_end_child: directory_panes_scroller = &gtk::ScrolledWindow {
-                    #[name = "directory_panes"]
-                    panel::Paned {
-                        append: file_preview.widget(),
+                adw::HeaderBar {},
+
+                adw::Flap {
+                    #[wrap(Some)]
+                    set_flap = &gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        append: places_sidebar.widget(),
+                    },
+
+                    #[wrap(Some)]
+                    set_separator = &gtk::Separator {},
+
+                    #[wrap(Some)]
+                    set_content = &gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        #[name = "directory_panes_scroller"]
+                        gtk::ScrolledWindow {
+                            set_hexpand: true,
+                            set_vexpand: true,
+
+                            #[name = "directory_panes"]
+                            panel::Paned {
+                                append: file_preview.widget(),
+                            },
+                        },
                     },
                 },
-                set_resize_end_child: true,
-                set_resize_start_child: false,
-                set_shrink_end_child: false,
-                set_shrink_start_child: false,
             },
 
             connect_close_request => move |this| {
@@ -277,7 +294,7 @@ impl SimpleComponent for AppModel {
         }
 
         if let Some(path) = &self.open_app_for_path {
-            choose_and_launch_app_for_path(&widgets.main_window, path);
+            choose_and_launch_app_for_path(widgets.main_window.clone(), path);
         }
     }
 }
@@ -293,10 +310,10 @@ impl SimpleComponent for AppModel {
 /// view update, in a child component we don't have access to the parent widgets during the view
 /// update. This prevents us from setting the transient parent for the dialog and triggers a GTK
 /// warning. It's much easier to just handle everything in the `App` widget.
-fn choose_and_launch_app_for_path(parent: &gtk::Window, path: &Path) {
+fn choose_and_launch_app_for_path(parent: impl IsA<gtk::Window>, path: &Path) {
     let file = gio::File::for_path(path);
 
-    let dialog = gtk::AppChooserDialog::new(Some(parent), gtk::DialogFlags::MODAL, &file);
+    let dialog = gtk::AppChooserDialog::new(Some(&parent), gtk::DialogFlags::MODAL, &file);
 
     dialog.connect_response(move |this, response| {
         if let gtk::ResponseType::Ok = response {
