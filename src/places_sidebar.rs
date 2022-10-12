@@ -40,6 +40,7 @@ impl SimpleComponent for PlacesSidebarModel {
         gtk::ScrolledWindow {
             set_hscrollbar_policy: gtk::PolicyType::Never,
             set_vexpand: true,
+            set_width_request: 150,
         }
     }
 
