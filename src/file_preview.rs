@@ -68,11 +68,10 @@ impl SimpleComponent for FilePreviewModel {
                 gtk::Box {
                     add_css_class: "file-preview",
 
-                    #[name = "image"]
-                    gtk::Image {
+                    #[name = "icon"]
+                    gtk::Picture {
                         set_visible: false,
                         set_hexpand: true,
-                        set_icon_size: gtk::IconSize::Large,
                     },
 
                     #[name = "picture"]
@@ -263,7 +262,7 @@ impl SimpleComponent for FilePreviewModel {
                 .set_text(&format_system_time(file.modified));
 
             widgets.picture.set_visible(false);
-            widgets.image.set_visible(false);
+            widgets.icon.set_visible(false);
             widgets.text_container.set_visible(false);
 
             match &file.preview {
@@ -272,8 +271,8 @@ impl SimpleComponent for FilePreviewModel {
                     widgets.picture.set_visible(true);
                 }
                 FilePreview::Icon(paintable) => {
-                    widgets.image.set_paintable(Some(paintable));
-                    widgets.image.set_visible(true);
+                    widgets.icon.set_paintable(Some(paintable));
+                    widgets.icon.set_visible(true);
                 }
                 FilePreview::Text(text) => {
                     widgets.text.buffer().set_text(text);
