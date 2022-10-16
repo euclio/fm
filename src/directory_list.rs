@@ -323,15 +323,15 @@ fn register_context_actions(
     let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
 
     group.add_action(RelmAction::<OpenDefaultAction>::new_with_target_value(
-        move |_, path: PathBuf| {
-            let uri = gio::File::for_path(path).uri();
+        move |_, uri: String| {
             let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
         },
     ));
 
     group.add_action(RelmAction::<OpenChooserAction>::new_with_target_value(
-        clone!(@strong sender => move |_, path: PathBuf| {
-            sender.output(AppMsg::ChooseAndLaunchApp(path));
+        clone!(@strong sender => move |_, uri: String| {
+            let file = gio::File::for_uri(&uri);
+            sender.output(AppMsg::ChooseAndLaunchApp(file));
         }),
     ));
 
@@ -341,7 +341,7 @@ fn register_context_actions(
     // is additive.
     let previous_handler_id = RefCell::new(None);
     group.add_action(RelmAction::<RenameAction>::new_with_target_value(
-        clone!(@weak rename_popover, @strong sender => move |_, path: PathBuf| {
+        clone!(@weak rename_popover, @strong sender => move |_, uri: String| {
             let root = rename_popover.child().unwrap().downcast::<gtk::Box>().unwrap();
             let entry = root.first_child().unwrap().downcast::<gtk::Entry>().unwrap();
 
@@ -349,13 +349,24 @@ fn register_context_actions(
                 glib::signal_handler_disconnect(&entry, id);
             }
 
-            entry.set_text(&path.file_name().unwrap().to_string_lossy());
+            let file = gio::File::for_uri(&uri);
+            if let Ok(edit_name) = file
+                .query_info(
+                    &gio::FILE_ATTRIBUTE_STANDARD_EDIT_NAME,
+                    gio::FileQueryInfoFlags::NONE,
+                    gio::Cancellable::NONE,
+                )
+                .map(|info| info.edit_name())
+            {
+                entry.set_text(&edit_name);
+            }
+
             let signal_handler_id = entry.connect_activate(clone!(
                     @weak rename_popover,
-                    @strong path,
+                    @strong file,
                     @strong sender => move |this| {
                         let new_name = this.text();
-                        info!("renaming {} to {}", path.display(), new_name);
+                        info!("renaming {:?} to {}", file.path(), new_name);
 
 
                         let res = (|| -> anyhow::Result<()> {
@@ -363,7 +374,6 @@ fn register_context_actions(
                                 bail!("File name cannot be empty.");
                             }
 
-                            let file = gio::File::for_path(&path);
                             file.set_display_name(&new_name, gio::Cancellable::NONE)?;
 
                             Ok(())
@@ -383,8 +393,8 @@ fn register_context_actions(
     ));
 
     group.add_action(RelmAction::<TrashFileAction>::new_with_target_value(
-        move |_, path: PathBuf| {
-            let file = gio::File::for_path(&path);
+        move |_, uri: String| {
+            let file = gio::File::for_uri(&uri);
             let _ = file.trash(None::<&gio::Cancellable>);
         },
     ));
@@ -500,6 +510,7 @@ fn handle_right_click(
 /// right click.
 fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
     let path = dir.join(file_info.name());
+    let uri = gio::File::for_path(path).uri().to_string();
 
     let menu_model = gio::Menu::new();
 
@@ -508,7 +519,7 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
     {
         let menu_item = RelmAction::<OpenDefaultAction>::to_menu_item_with_target_value(
             &format!("Open with {}", app_info.display_name()),
-            &path,
+            &uri,
         );
 
         if let Some(icon) = &app_info.icon() {
@@ -519,16 +530,16 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
     }
 
     menu_model.append_item(
-        &RelmAction::<OpenChooserAction>::to_menu_item_with_target_value("Open with...", &path),
+        &RelmAction::<OpenChooserAction>::to_menu_item_with_target_value("Open with...", &uri),
     );
 
     menu_model.append_item(
-        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value("Move to Trash", &path),
+        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value("Move to Trash", &uri),
     );
 
     menu_model.append_item(&RelmAction::<RenameAction>::to_menu_item_with_target_value(
         "Rename...",
-        &path,
+        &uri,
     ));
 
     menu_model.freeze();

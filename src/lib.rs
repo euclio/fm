@@ -8,9 +8,10 @@
 #![warn(clippy::todo)]
 
 use std::convert::identity;
-use std::path::{self, Path, PathBuf};
+use std::path::{self, PathBuf};
 
-use gtk::{gio, prelude::*};
+use glib::clone;
+use gtk::{gio, glib, prelude::*};
 use log::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
@@ -45,8 +46,8 @@ pub struct AppModel {
     /// bound on the next view update.
     update_directory_scroll_position: bool,
 
-    /// Open the app chooser to open the given path on the next view update.
-    open_app_for_path: Option<PathBuf>,
+    /// Open the app chooser to open the given file on the next view update.
+    open_app_for_file: Option<gio::File>,
 
     state: State,
 }
@@ -80,8 +81,8 @@ pub enum AppMsg {
     /// - If the new selection is a file, the preview must be updated.
     NewSelection(Selection),
 
-    /// Trigger the application chooser to pick an application to open the given file path.
-    ChooseAndLaunchApp(PathBuf),
+    /// Trigger the application chooser to pick an application to open the given file.
+    ChooseAndLaunchApp(gio::File),
 }
 
 #[relm4::component(pub)]
@@ -190,7 +191,7 @@ impl SimpleComponent for AppModel {
             file_preview,
             _places_sidebar: places_sidebar,
             update_directory_scroll_position: false,
-            open_app_for_path: None,
+            open_app_for_file: None,
             state,
         };
 
@@ -211,7 +212,7 @@ impl SimpleComponent for AppModel {
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         info!("received message: {:?}", msg);
 
-        self.open_app_for_path = None;
+        self.open_app_for_file = None;
         self.update_directory_scroll_position = false;
 
         match msg {
@@ -275,7 +276,7 @@ impl SimpleComponent for AppModel {
 
                 self.update_directory_scroll_position = true;
             }
-            AppMsg::ChooseAndLaunchApp(path) => self.open_app_for_path = Some(path),
+            AppMsg::ChooseAndLaunchApp(file) => self.open_app_for_file = Some(file),
         }
     }
 
@@ -295,8 +296,8 @@ impl SimpleComponent for AppModel {
             set_adjustment_to_upper_bound(&widgets.directory_panes_scroller.hadjustment());
         }
 
-        if let Some(path) = &self.open_app_for_path {
-            choose_and_launch_app_for_path(widgets.main_window.clone(), path);
+        if let Some(file) = &self.open_app_for_file {
+            choose_and_launch_app_for_file(widgets.main_window.clone(), file);
         }
     }
 }
@@ -312,12 +313,10 @@ impl SimpleComponent for AppModel {
 /// view update, in a child component we don't have access to the parent widgets during the view
 /// update. This prevents us from setting the transient parent for the dialog and triggers a GTK
 /// warning. It's much easier to just handle everything in the `App` widget.
-fn choose_and_launch_app_for_path(parent: impl IsA<gtk::Window>, path: &Path) {
-    let file = gio::File::for_path(path);
+fn choose_and_launch_app_for_file(parent: impl IsA<gtk::Window>, file: &gio::File) {
+    let dialog = gtk::AppChooserDialog::new(Some(&parent), gtk::DialogFlags::MODAL, file);
 
-    let dialog = gtk::AppChooserDialog::new(Some(&parent), gtk::DialogFlags::MODAL, &file);
-
-    dialog.connect_response(move |this, response| {
+    dialog.connect_response(clone!(@strong file => move |this, response| {
         if let gtk::ResponseType::Ok = response {
             if let Some(app_info) = this.app_info() {
                 let _ = app_info.launch(&[file.clone()], None::<&gio::AppLaunchContext>);
@@ -325,7 +324,7 @@ fn choose_and_launch_app_for_path(parent: impl IsA<gtk::Window>, path: &Path) {
         }
 
         this.hide();
-    });
+    }));
 
     dialog.show();
 }
