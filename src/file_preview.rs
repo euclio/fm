@@ -1,9 +1,6 @@
 //! Widget that displays file metadata and a small preview.
 
-use std::fs::File;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Local};
 use gtk::{gdk, gio, glib};
@@ -34,7 +31,7 @@ enum FilePreview {
 
 #[derive(Debug)]
 struct FileInfo {
-    path: PathBuf,
+    display_name: String,
     mime: Mime,
     language: Option<sourceview::Language>,
     size: u64,
@@ -165,14 +162,25 @@ impl SimpleComponent for FilePreviewModel {
 
         self.file = match msg {
             FilePreviewMsg::Hide => None,
-            FilePreviewMsg::NewSelection(path) if path.is_dir() => None,
-            FilePreviewMsg::NewSelection(path) => {
+            FilePreviewMsg::NewSelection(file)
+                if file.query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+                    == gio::FileType::Directory =>
+            {
+                None
+            }
+            FilePreviewMsg::NewSelection(file) => {
+                let path = file.path();
+
                 // TODO: make async?
-                let file_info = match gio::File::for_path(&path).query_info(
+                let file_info = match file.query_info(
                     &[
                         *gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                        *gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
                         *gio::FILE_ATTRIBUTE_STANDARD_ICON,
                         *gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
+                        *gio::FILE_ATTRIBUTE_STANDARD_SIZE,
+                        *gio::FILE_ATTRIBUTE_TIME_CREATED,
+                        *gio::FILE_ATTRIBUTE_TIME_MODIFIED,
                     ]
                     .join(","),
                     gio::FileQueryInfoFlags::NONE,
@@ -187,14 +195,17 @@ impl SimpleComponent for FilePreviewModel {
 
                 let content_type = file_info.content_type().unwrap();
 
-                let contents = if path.is_file() {
-                    read_start_of_file(&path).unwrap_or_default()
+                let contents = if file
+                    .query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+                    == gio::FileType::Regular
+                {
+                    read_start_of_file(&file).unwrap_or_else(|_| glib::Bytes::from_static(&[]))
                 } else {
-                    Vec::default()
+                    glib::Bytes::from_static(&[])
                 };
 
                 let language = sourceview::LanguageManager::default()
-                    .guess_language(Some(&path), Some(&content_type));
+                    .guess_language(file.path(), Some(&content_type));
 
                 let mime = gio::content_type_get_mime_type(&content_type)
                     .expect("unable to determine mime type")
@@ -204,7 +215,7 @@ impl SimpleComponent for FilePreviewModel {
                 info!("identified file as {}", mime);
 
                 let preview = match (mime.type_(), mime.subtype()) {
-                    (mime::IMAGE, _) => FilePreview::Image(gio::File::for_path(&path)),
+                    (mime::IMAGE, _) => FilePreview::Image(file),
                     _ if is_plain_text(&mime) => {
                         FilePreview::Text(String::from_utf8_lossy(&contents).into())
                     }
@@ -215,29 +226,25 @@ impl SimpleComponent for FilePreviewModel {
                     }
                 };
 
-                let (size, created, modified) = (|| -> io::Result<_> {
-                    // Fall back to symlink_metadata to handle broken symlinks.
-                    let metadata = path.metadata().or_else(|_| path.symlink_metadata())?;
-
-                    let size = metadata.len();
-                    let created = metadata.created()?;
-                    let modified = metadata.modified()?;
-
-                    Ok((size, created, modified))
-                })()
-                .unwrap_or_else(|e| {
-                    info!("unable to read metadata: {}", e);
-                    (0, SystemTime::UNIX_EPOCH, SystemTime::UNIX_EPOCH)
-                });
-
                 Some(FileInfo {
-                    path,
+                    display_name: file_info.display_name().to_string(),
                     language,
                     mime,
                     preview,
-                    size,
-                    created,
-                    modified,
+                    size: file_info.size() as u64,
+                    // FIXME: Use `creation_date_time()` if a new enough version of glib is being used.
+                    created: path
+                        .and_then(|path| {
+                            path.metadata()
+                                .or_else(|_| path.symlink_metadata())
+                                .and_then(|metadata| metadata.created())
+                                .ok()
+                        })
+                        .unwrap_or(SystemTime::UNIX_EPOCH),
+                    modified: file_info
+                        .modification_date_time()
+                        .map(|dt| SystemTime::UNIX_EPOCH + Duration::from_secs(dt.to_unix() as u64))
+                        .unwrap_or(SystemTime::UNIX_EPOCH),
                 })
             }
         }
@@ -245,13 +252,7 @@ impl SimpleComponent for FilePreviewModel {
 
     fn pre_view(&self, widgets: &mut Self::Widgets) {
         if let Some(file) = &self.file {
-            widgets.file_name.set_text(
-                &file
-                    .path
-                    .file_name()
-                    .expect("file must have a name")
-                    .to_string_lossy(),
-            );
+            widgets.file_name.set_text(&file.display_name);
             widgets.file_type.set_text(&format!(
                 "{} — {}",
                 file.mime,
@@ -295,22 +296,15 @@ impl SimpleComponent for FilePreviewModel {
 #[derive(Debug)]
 pub enum FilePreviewMsg {
     /// Update the preview to show the contents of a new file.
-    NewSelection(PathBuf),
+    NewSelection(gio::File),
 
     /// Empty the contents of the preview.
     Hide,
 }
 
-fn read_start_of_file(path: &Path) -> io::Result<Vec<u8>> {
-    use std::io::Read;
-
-    let mut f = File::open(path)?;
-
-    let mut buf = vec![0; PREVIEW_BUFFER_SIZE];
-    let n = f.read(&mut buf)?;
-    buf.truncate(n);
-
-    Ok(buf)
+fn read_start_of_file(file: &gio::File) -> Result<glib::Bytes, glib::Error> {
+    let file = file.read(gio::Cancellable::NONE)?;
+    file.read_bytes(PREVIEW_BUFFER_SIZE, gio::Cancellable::NONE)
 }
 
 /// Returns `true` for mime types that are "reasonably" readable as plain text.

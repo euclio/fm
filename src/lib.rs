@@ -221,6 +221,8 @@ impl SimpleComponent for AppModel {
                 });
             }
             AppMsg::NewSelection(Selection::File(path)) => {
+                let file = gio::File::for_path(&path);
+
                 let mut last_dir = self.last_dir();
 
                 let diff = pathdiff::diff_paths(&path, &last_dir)
@@ -250,7 +252,7 @@ impl SimpleComponent for AppModel {
                     }
                 }
 
-                self.file_preview.emit(FilePreviewMsg::NewSelection(path));
+                self.file_preview.emit(FilePreviewMsg::NewSelection(file));
 
                 self.update_directory_scroll_position = true;
             }
