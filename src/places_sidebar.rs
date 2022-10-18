@@ -6,8 +6,6 @@
 //!
 //! [`PlacesSidebar`]: https://docs.gtk.org/gtk3/class.PlacesSidebar.html
 
-use std::path::{Path, PathBuf};
-
 use glib::clone;
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -21,7 +19,7 @@ use place::PlaceObject;
 
 #[derive(Debug)]
 pub enum PlacesSidebarMsg {
-    SelectionChanged(PathBuf),
+    SelectionChanged(gio::File),
 }
 
 #[derive(Debug)]
@@ -32,7 +30,7 @@ pub struct PlacesSidebarModel {
 #[relm4::component(pub)]
 impl SimpleComponent for PlacesSidebarModel {
     type Widgets = PlacesSidebarWidgets;
-    type Init = PathBuf;
+    type Init = gio::File;
     type Input = PlacesSidebarMsg;
     type Output = AppMsg;
 
@@ -45,13 +43,17 @@ impl SimpleComponent for PlacesSidebarModel {
     }
 
     fn init(
-        root_dir: PathBuf,
+        root_dir: gio::File,
         root: &Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let store = gio::ListStore::new(PlaceObject::static_type());
 
-        let mut places = vec![PlaceObject::new("Home", &glib::home_dir(), "user-home")];
+        let mut places = vec![PlaceObject::new(
+            "Home",
+            &gio::File::for_path(glib::home_dir()),
+            "user-home",
+        )];
 
         let user_dirs = [
             (glib::UserDirectory::Documents, "folder-documents"),
@@ -68,21 +70,22 @@ impl SimpleComponent for PlacesSidebarModel {
                 return None;
             }
 
+            let file = gio::File::for_path(&path);
             let name = path.file_name().unwrap_or_default().to_string_lossy();
-            Some(PlaceObject::new(&name, &path, icon))
+            Some(PlaceObject::new(&name, &file, icon))
         }));
 
         // TODO: Trash
 
         places.push(PlaceObject::new(
             "Computer",
-            Path::new("/"),
+            &gio::File::for_path("/"),
             "drive-harddisk",
         ));
 
         // If the root matches an existing place, set the selection to that place.
         let root_place_position = places.iter().position(|place| {
-            let path = place.property::<gio::File>("file").path().unwrap();
+            let path = place.property::<gio::File>("file");
             path == root_dir
         });
 
@@ -143,9 +146,9 @@ impl SimpleComponent for PlacesSidebarModel {
             clone!(@strong sender => move |selection, _, _| {
                 let selected_item = selection.selected_item().unwrap();
                 let place = selected_item.downcast::<PlaceObject>().unwrap();
-                let path = place.property::<gio::File>("file").path().unwrap();
+                let file = place.property::<gio::File>("file");
 
-                sender.input(PlacesSidebarMsg::SelectionChanged(path));
+                sender.input(PlacesSidebarMsg::SelectionChanged(file));
             }),
         );
 
@@ -162,8 +165,8 @@ impl SimpleComponent for PlacesSidebarModel {
 
     fn update(&mut self, msg: PlacesSidebarMsg, sender: ComponentSender<PlacesSidebarModel>) {
         match msg {
-            PlacesSidebarMsg::SelectionChanged(path) => {
-                sender.output(AppMsg::NewRoot(gio::File::for_path(path)));
+            PlacesSidebarMsg::SelectionChanged(file) => {
+                sender.output(AppMsg::NewRoot(file));
             }
         }
     }

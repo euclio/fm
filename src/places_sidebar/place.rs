@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use glib::Object;
 use relm4::gtk::{gio, glib};
 
@@ -9,13 +7,9 @@ glib::wrapper! {
 }
 
 impl PlaceObject {
-    pub fn new(name: &str, file: &Path, icon: &str) -> Self {
-        Object::new(&[
-            ("name", &name),
-            ("file", &gio::File::for_path(file)),
-            ("icon", &icon),
-        ])
-        .expect("unable to create PlaceObject")
+    pub fn new(name: &str, file: &gio::File, icon: &str) -> Self {
+        Object::new(&[("name", &name), ("file", &file), ("icon", &icon)])
+            .expect("unable to create PlaceObject")
     }
 }
 

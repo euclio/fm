@@ -176,7 +176,7 @@ impl SimpleComponent for AppModel {
         let file_preview = FilePreviewModel::builder().launch(()).detach();
 
         let places_sidebar = PlacesSidebarModel::builder()
-            .launch(dir.path().unwrap())
+            .launch(dir.clone())
             .forward(sender.input_sender(), identity);
 
         let widgets = view_output!();
