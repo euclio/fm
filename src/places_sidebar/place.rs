@@ -7,7 +7,7 @@ glib::wrapper! {
 }
 
 impl PlaceObject {
-    pub fn new(name: &str, file: &gio::File, icon: &str) -> Self {
+    pub fn new(name: &str, file: &gio::File, icon: &gio::Icon) -> Self {
         Object::new(&[("name", &name), ("file", &file), ("icon", &icon)])
             .expect("unable to create PlaceObject")
     }
@@ -26,7 +26,7 @@ mod imp {
     pub struct PlaceObject {
         name: RefCell<String>,
         file: RefCell<gio::File>,
-        icon: RefCell<String>,
+        icon: RefCell<gio::Icon>,
     }
 
     impl Default for PlaceObject {
@@ -34,7 +34,7 @@ mod imp {
             PlaceObject {
                 name: Default::default(),
                 file: RefCell::new(gio::File::for_path(PathBuf::from("/"))),
-                icon: Default::default(),
+                icon: RefCell::new(gio::ThemedIcon::new("").upcast()),
             }
         }
     }
@@ -51,7 +51,13 @@ mod imp {
                         gio::File::static_type(),
                         ParamFlags::READWRITE,
                     ),
-                    ParamSpecString::new("icon", "icon", "icon", None, ParamFlags::READWRITE),
+                    ParamSpecObject::new(
+                        "icon",
+                        "icon",
+                        "icon",
+                        gio::Icon::static_type(),
+                        ParamFlags::READWRITE,
+                    ),
                 ]
             });
             PROPERTIES.as_ref()
