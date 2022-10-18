@@ -59,6 +59,8 @@ impl AppModel {
             .back()
             .expect("there must be at least one directory listed")
             .dir()
+            .path()
+            .unwrap()
     }
 }
 
@@ -195,7 +197,10 @@ impl SimpleComponent for AppModel {
             state,
         };
 
-        model.directories.guard().push_back(dir.to_path_buf());
+        model
+            .directories
+            .guard()
+            .push_back(gio::File::for_path(dir));
 
         // TODO: There's sometimes a delay in updating the adjustment upper bound when a new pane
         // is added, causing this code to not trigger at the right time. Needs more investigation.
@@ -221,9 +226,8 @@ impl SimpleComponent for AppModel {
                     text: err.to_string(),
                 });
             }
-            AppMsg::NewSelection(Selection::File(path)) => {
-                let file = gio::File::for_path(&path);
-
+            AppMsg::NewSelection(Selection::File(file)) => {
+                let path = file.path().unwrap();
                 let mut last_dir = self.last_dir();
 
                 let diff = pathdiff::diff_paths(&path, &last_dir)
@@ -245,7 +249,7 @@ impl SimpleComponent for AppModel {
                         path::Component::Normal(name) => {
                             let component_path = last_dir.join(name);
                             if component_path.is_dir() {
-                                directories.push_back(component_path.clone());
+                                directories.push_back(gio::File::for_path(&component_path));
                                 last_dir = component_path;
                             }
                         }
@@ -270,7 +274,7 @@ impl SimpleComponent for AppModel {
                 directories.clear();
 
                 self.root = new_root;
-                directories.push_back(self.root.clone());
+                directories.push_back(gio::File::for_path(&self.root));
 
                 self.file_preview.emit(FilePreviewMsg::Hide);
 

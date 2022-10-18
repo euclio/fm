@@ -1,7 +1,6 @@
 //! Factory widget that displays a listing of the contents of a directory.
 
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
 
 use anyhow::bail;
 use glib::translate::{from_glib_full, IntoGlib};
@@ -39,8 +38,8 @@ pub struct Directory {
 
 impl Directory {
     /// Returns the listed directory.
-    pub fn dir(&self) -> PathBuf {
-        self.directory_list.file().and_then(|f| f.path()).unwrap()
+    pub fn dir(&self) -> gio::File {
+        self.directory_list.file().unwrap()
     }
 }
 
@@ -48,7 +47,7 @@ impl Directory {
 #[derive(Debug)]
 pub enum Selection {
     /// A single-file selection.
-    File(PathBuf),
+    File(gio::File),
 
     /// No file is selected.
     None,
@@ -60,7 +59,7 @@ impl FactoryComponent for Directory {
     type ParentInput = AppMsg;
     type ParentWidget = panel::Paned;
     type Widgets = DirectoryWidgets;
-    type Init = PathBuf;
+    type Init = gio::File;
     type Input = ();
     type Output = AppMsg;
     type Root = gtk::ScrolledWindow;
@@ -85,7 +84,10 @@ impl FactoryComponent for Directory {
         _index: &DynamicIndex,
         _sender: FactoryComponentSender<Self>,
     ) -> Self {
-        assert!(dir.is_dir());
+        debug_assert!(
+            dir.query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+                == gio::FileType::Directory
+        );
 
         let directory_list = gtk::DirectoryList::new(
             Some(
@@ -99,7 +101,7 @@ impl FactoryComponent for Directory {
                 ]
                 .join(","),
             ),
-            Some(&gio::File::for_path(dir)),
+            Some(&dir),
         );
 
         let list_model = gtk::SortListModel::new(Some(&directory_list), Some(&file_sorter()));
@@ -157,8 +159,8 @@ impl FactoryComponent for Directory {
         => move |_, position| {
             if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
                 let info = item.downcast_ref::<gio::FileInfo>().unwrap();
-                let path = dir.join(info.name());
-                open_application_for_path(&path, &sender);
+                let file = dir.child(info.name());
+                open_application_for_file(&file, &sender);
             }
         }));
 
@@ -176,7 +178,7 @@ impl FactoryComponent for Directory {
 /// This view displays an icon, the name of the file, and an arrow indicating if the item is a file
 /// or directory.
 fn build_list_item_view(
-    dir: PathBuf,
+    dir: gio::File,
     selection: &gtk::SingleSelection,
     list_item: &gtk::ListItem,
     sender: &FactoryComponentSender<Directory>,
@@ -264,7 +266,7 @@ fn build_list_item_view(
             |_: Option<Object>, item: Option<Object>| {
                 item.map(|item| {
                     let file_info = item.downcast_ref::<gio::FileInfo>().unwrap();
-                    let file = gio::File::for_path(dir.join(file_info.name()));
+                    let file = dir.child(file_info.name());
 
                     // Dip into FFI here since the Rust bindings don't currently provide a way to
                     // construct the content provider from a GFile.
@@ -366,7 +368,7 @@ fn register_context_actions(
                     @strong file,
                     @strong sender => move |this| {
                         let new_name = this.text();
-                        info!("renaming {:?} to {}", file.path(), new_name);
+                        info!("renaming {} to {}", file.uri(), new_name);
 
 
                         let res = (|| -> anyhow::Result<()> {
@@ -411,7 +413,7 @@ fn register_context_actions(
 /// The drop target accepts [`gio::File`]s and rejects files that are already in the same
 /// directory.
 fn new_drop_target_for_dir(
-    dir: PathBuf,
+    dir: gio::File,
     sender: FactoryComponentSender<Directory>,
 ) -> gtk::DropTarget {
     let drop_target = gtk::DropTarget::builder()
@@ -425,9 +427,9 @@ fn new_drop_target_for_dir(
         if let Some(value) = this.value() {
             let file = value.get::<gio::File>().unwrap();
 
-            info!("attempting to drop file {:?}", file.path());
+            info!("attempting to drop file {}", file.uri());
 
-            if file.parent().and_then(|f| f.path()).as_deref() == Some(dir.as_path()) {
+            if file.parent().as_ref() == Some(&dir) {
                 info!("rejecting drop; file is already in directory");
                 this.reject();
             }
@@ -437,9 +439,9 @@ fn new_drop_target_for_dir(
     drop_target.connect_drop(clone!(@strong dir => move |_, value, _, _| {
         let file = value.get::<gio::File>().unwrap();
 
-        info!("dropping {:?}", file.path());
+        info!("dropping {}", file.uri());
 
-        let destination = gio::File::for_path(dir.join(file.basename().unwrap()));
+        let destination = dir.child(file.basename().unwrap());
         let res = file.move_(&destination, gio::FileCopyFlags::NONE, gio::Cancellable::NONE, None);
 
         if let Err(err) = res {
@@ -470,9 +472,9 @@ fn send_new_selection(
             .unwrap()
             .downcast::<gtk::DirectoryList>()
             .unwrap();
-        let dir = directory_list.file().and_then(|f| f.path()).unwrap();
+        let dir = directory_list.file().unwrap();
 
-        Selection::File(dir.join(file_info.name()))
+        Selection::File(dir.child(file_info.name()))
     } else {
         Selection::None
     };
@@ -482,7 +484,7 @@ fn send_new_selection(
 
 /// Handles the right click operation on an individual list item.
 fn handle_right_click(
-    dir: &Path,
+    dir: &gio::File,
     selection: &gtk::SingleSelection,
     list_item: &gtk::ListItem,
     menu: gtk::PopoverMenu,
@@ -508,9 +510,9 @@ fn handle_right_click(
 
 /// Constructs a new menu model for the given file info. Used to dynamically populate the menu on
 /// right click.
-fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
-    let path = dir.join(file_info.name());
-    let uri = gio::File::for_path(path).uri().to_string();
+fn populate_menu_model(file_info: &gio::FileInfo, dir: &gio::File) -> gio::Menu {
+    let file = dir.child(file_info.name());
+    let uri = file.uri().to_string();
 
     let menu_model = gio::Menu::new();
 
@@ -547,14 +549,13 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &Path) -> gio::Menu {
     menu_model
 }
 
-/// Opens the default application for the given path.
-fn open_application_for_path(path: &Path, sender: &FactoryComponentSender<Directory>) {
-    info!("opening {:?} in external application", path);
+/// Opens the default application for the given file.
+fn open_application_for_file(file: &gio::File, sender: &FactoryComponentSender<Directory>) {
+    info!("opening {} in external application", file.uri());
 
-    if let Err(e) = gio::AppInfo::launch_default_for_uri(
-        &format!("file://{}", path.display()),
-        None::<&gio::AppLaunchContext>,
-    ) {
+    if let Err(e) =
+        gio::AppInfo::launch_default_for_uri(file.uri().as_str(), None::<&gio::AppLaunchContext>)
+    {
         sender.output(AppMsg::Error(e.into()));
     }
 }
