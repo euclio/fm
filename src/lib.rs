@@ -15,6 +15,7 @@ use gtk::{gio, glib, prelude::*};
 use log::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
+use uriparse::URI;
 
 mod alert;
 mod config;
@@ -32,7 +33,7 @@ use crate::places_sidebar::PlacesSidebarModel;
 #[derive(Debug)]
 pub struct AppModel {
     /// The directory listed by the leftmost column.
-    root: PathBuf,
+    root: gio::File,
 
     /// The directory listings. This factory acts as a stack, where new directories are pushed and
     /// popped relative to the root as the user clicks on new directory entries.
@@ -54,13 +55,11 @@ pub struct AppModel {
 
 impl AppModel {
     /// Returns the deepest directory that is listed (the rightmost listing).
-    pub fn last_dir(&self) -> PathBuf {
+    pub fn last_dir(&self) -> gio::File {
         self.directories
             .back()
             .expect("there must be at least one directory listed")
             .dir()
-            .path()
-            .unwrap()
     }
 }
 
@@ -71,7 +70,7 @@ pub enum AppMsg {
 
     /// The file root has changed. Existing directory trees are now invalid and must be popped off
     /// the stack.
-    NewRoot(PathBuf),
+    NewRoot(gio::File),
 
     /// A new selection was made within the existing directory listings. This can result in a
     /// number of possible changes:
@@ -163,6 +162,8 @@ impl SimpleComponent for AppModel {
             &dir
         };
 
+        let dir = gio::File::for_path(dir);
+
         let state = State::read()
             .map_err(|e| {
                 warn!("unable to read application state: {}", e);
@@ -175,13 +176,13 @@ impl SimpleComponent for AppModel {
         let file_preview = FilePreviewModel::builder().launch(()).detach();
 
         let places_sidebar = PlacesSidebarModel::builder()
-            .launch(dir.to_path_buf())
+            .launch(dir.path().unwrap())
             .forward(sender.input_sender(), identity);
 
         let widgets = view_output!();
 
         let mut model = AppModel {
-            root: dir.to_owned(),
+            root: dir.clone(),
             directories: FactoryVecDeque::new(
                 widgets.directory_panes.clone(),
                 sender.input_sender(),
@@ -197,10 +198,7 @@ impl SimpleComponent for AppModel {
             state,
         };
 
-        model
-            .directories
-            .guard()
-            .push_back(gio::File::for_path(dir));
+        model.directories.guard().push_back(dir);
 
         // TODO: There's sometimes a delay in updating the adjustment upper bound when a new pane
         // is added, causing this code to not trigger at the right time. Needs more investigation.
@@ -227,15 +225,31 @@ impl SimpleComponent for AppModel {
                 });
             }
             AppMsg::NewSelection(Selection::File(file)) => {
-                let path = file.path().unwrap();
                 let mut last_dir = self.last_dir();
 
-                let diff = pathdiff::diff_paths(&path, &last_dir)
+                let file_path = URI::try_from(file.uri().as_str())
+                    .unwrap()
+                    .path()
+                    .segments()
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<PathBuf>();
+                let last_dir_path = URI::try_from(last_dir.uri().as_str())
+                    .unwrap()
+                    .path()
+                    .segments()
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<PathBuf>();
+
+                let diff = pathdiff::diff_paths(&file_path, &last_dir_path)
                     .expect("new selection must be relative to the listed directories");
 
                 info!(
-                    "new selection: {:?}, last dir: {:?}, diff: {:?}",
-                    path, last_dir, diff
+                    "new selection: {}, last dir: {}, diff: {}",
+                    file.uri(),
+                    last_dir.uri(),
+                    diff.display()
                 );
 
                 let mut directories = self.directories.guard();
@@ -244,13 +258,17 @@ impl SimpleComponent for AppModel {
                     match component {
                         path::Component::ParentDir => {
                             directories.pop_back();
-                            last_dir.pop();
+                            last_dir = last_dir.parent().unwrap();
                         }
                         path::Component::Normal(name) => {
-                            let component_path = last_dir.join(name);
-                            if component_path.is_dir() {
-                                directories.push_back(gio::File::for_path(&component_path));
-                                last_dir = component_path;
+                            let component_file = last_dir.child(name);
+                            if component_file.query_file_type(
+                                gio::FileQueryInfoFlags::NONE,
+                                gio::Cancellable::NONE,
+                            ) == gio::FileType::Directory
+                            {
+                                directories.push_back(component_file.clone());
+                                last_dir = component_file;
                             }
                         }
                         _ => unreachable!("unexpected path component: {:?}", component),
@@ -274,7 +292,7 @@ impl SimpleComponent for AppModel {
                 directories.clear();
 
                 self.root = new_root;
-                directories.push_back(gio::File::for_path(&self.root));
+                directories.push_back(self.root.clone());
 
                 self.file_preview.emit(FilePreviewMsg::Hide);
 

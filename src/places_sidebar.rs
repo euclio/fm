@@ -163,7 +163,7 @@ impl SimpleComponent for PlacesSidebarModel {
     fn update(&mut self, msg: PlacesSidebarMsg, sender: ComponentSender<PlacesSidebarModel>) {
         match msg {
             PlacesSidebarMsg::SelectionChanged(path) => {
-                sender.output(AppMsg::NewRoot(path));
+                sender.output(AppMsg::NewRoot(gio::File::for_path(path)));
             }
         }
     }
