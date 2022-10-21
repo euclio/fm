@@ -15,7 +15,6 @@ use gtk::{gio, glib, prelude::*};
 use log::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
-use uriparse::URI;
 
 mod alert;
 mod config;
@@ -227,20 +226,12 @@ impl SimpleComponent for AppModel {
             AppMsg::NewSelection(Selection::File(file)) => {
                 let mut last_dir = self.last_dir();
 
-                let file_path = URI::try_from(file.uri().as_str())
-                    .unwrap()
-                    .path()
-                    .segments()
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect::<PathBuf>();
-                let last_dir_path = URI::try_from(last_dir.uri().as_str())
-                    .unwrap()
-                    .path()
-                    .segments()
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect::<PathBuf>();
+                let file_path = match glib::filename_from_uri(&file.uri()) {
+                    Ok((file_path, _)) => file_path,
+                    Err(_) => return,
+                };
+                let (last_dir_path, _) = glib::filename_from_uri(&last_dir.uri())
+                    .expect("last visited directory must be a URI");
 
                 let diff = pathdiff::diff_paths(&file_path, &last_dir_path)
                     .expect("new selection must be relative to the listed directories");
