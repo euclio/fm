@@ -224,12 +224,17 @@ impl SimpleComponent for AppModel {
             AppMsg::NewSelection(Selection::File(file)) => {
                 let mut last_dir = self.last_dir();
 
-                let file_path = match glib::filename_from_uri(&file.uri()) {
-                    Ok((file_path, _)) => file_path,
-                    Err(_) => return,
+                let file_path = match glib::Uri::split(&file.uri(), glib::UriFlags::NONE) {
+                    Ok((_, _, _, _, path, _, _)) => PathBuf::from(&path),
+                    Err(e) => {
+                        warn!("unable to parse URI: {}", e);
+                        return;
+                    }
                 };
-                let (last_dir_path, _) = glib::filename_from_uri(&last_dir.uri())
-                    .expect("last visited directory must be a URI");
+
+                let last_dir_path = glib::Uri::split(&last_dir.uri(), glib::UriFlags::NONE)
+                    .map(|(_, _, _, _, path, _, _)| path)
+                    .expect("last visited directory must be a valid URI");
 
                 let diff = pathdiff::diff_paths(&file_path, &last_dir_path)
                     .expect("new selection must be relative to the listed directories");
