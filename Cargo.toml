@@ -11,6 +11,7 @@ anyhow = "1.0.51"
 chrono = "0.4.19"
 clap = { version = "3.1.18", features = ["derive"] }
 directories = "4.0.1"
+educe = { version = "0.4.19", features = ["Debug"], default-features = false }
 env_logger = "0.9.0"
 log = "0.4.14"
 mime = "0.3.16"

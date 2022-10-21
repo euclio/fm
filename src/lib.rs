@@ -212,8 +212,6 @@ impl SimpleComponent for AppModel {
     }
 
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
-        info!("received message: {:?}", msg);
-
         self.open_app_for_file = None;
         self.update_directory_scroll_position = false;
 

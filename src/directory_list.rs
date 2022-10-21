@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 
 use anyhow::bail;
+use educe::Educe;
 use glib::translate::{from_glib_full, IntoGlib};
 use glib::{clone, closure, Object};
 use log::*;
@@ -44,10 +45,11 @@ impl Directory {
 }
 
 /// Used to communicate the file selection status to the parent widget.
-#[derive(Debug)]
+#[derive(Educe)]
+#[educe(Debug)]
 pub enum Selection {
     /// A single-file selection.
-    File(gio::File),
+    File(#[educe(Debug(method = "util::fmt_file_as_uri"))] gio::File),
 
     /// No file is selected.
     None,

@@ -1,3 +1,7 @@
+//! Utility functions.
+
+use std::fmt;
+
 use relm4::gtk::{self, gdk, gio, prelude::*};
 
 mod emblemed_paintable;
@@ -44,4 +48,9 @@ pub fn icon_for_file(
     } else {
         icon_paintable
     }
+}
+
+/// Format a [`GFile`](gio::File) as its URI for nicer [`Debug`] output.
+pub fn fmt_file_as_uri(file: &gio::File, f: &mut fmt::Formatter) -> fmt::Result {
+    f.write_str(&file.uri())
 }
