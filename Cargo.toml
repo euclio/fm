@@ -5,6 +5,9 @@ edition = "2021"
 authors = ["Andy Russell <arussell123@gmail.com>"]
 publish = false
 license = "MIT"
+repository = "https://github.com/euclio/fm"
+homepage = "https://github.com/euclio/fm"
+description = "A small, general-purpose file manager."
 
 [dependencies]
 anyhow = "1.0.51"

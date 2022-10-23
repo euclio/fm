@@ -13,6 +13,7 @@ use std::path::{self, PathBuf};
 use glib::clone;
 use gtk::{gio, glib, prelude::*};
 use log::*;
+use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 
@@ -83,6 +84,9 @@ pub enum AppMsg {
 
     /// Trigger the application chooser to pick an application to open the given file.
     ChooseAndLaunchApp(gio::File),
+
+    /// Display the about window.
+    About,
 }
 
 #[relm4::component(pub)]
@@ -101,7 +105,12 @@ impl SimpleComponent for AppModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
 
-                adw::HeaderBar {},
+                adw::HeaderBar {
+                    pack_end = &gtk::MenuButton {
+                        set_icon_name: "open-menu-symbolic",
+                        set_menu_model: Some(&primary_menu),
+                    },
+                },
 
                 adw::Flap {
                     #[wrap(Some)]
@@ -147,6 +156,12 @@ impl SimpleComponent for AppModel {
 
                 gtk::Inhibit(false)
             }
+        }
+    }
+
+    menu! {
+        primary_menu: {
+            "About" => AboutAction,
         }
     }
 
@@ -198,6 +213,17 @@ impl SimpleComponent for AppModel {
         };
 
         model.directories.guard().push_back(dir);
+
+        let group = RelmActionGroup::<WindowActionGroup>::new();
+
+        let about_action: RelmAction<AboutAction> = RelmAction::new_stateless(move |_| {
+            sender.input(AppMsg::About);
+        });
+        group.add_action(about_action);
+
+        widgets
+            .main_window
+            .insert_action_group("win", Some(&group.into_action_group()));
 
         // TODO: There's sometimes a delay in updating the adjustment upper bound when a new pane
         // is added, causing this code to not trigger at the right time. Needs more investigation.
@@ -293,6 +319,24 @@ impl SimpleComponent for AppModel {
                 self.update_directory_scroll_position = true;
             }
             AppMsg::ChooseAndLaunchApp(file) => self.open_app_for_file = Some(file),
+            AppMsg::About => {
+                gtk::AboutDialog::builder()
+                    .authors(
+                        env!("CARGO_PKG_AUTHORS")
+                            .split(':')
+                            .map(String::from)
+                            .collect(),
+                    )
+                    .comments(env!("CARGO_PKG_DESCRIPTION"))
+                    .copyright("© 2021 Andy Russell")
+                    .license_type(gtk::License::MitX11)
+                    .logo_icon_name("folder-symbolic")
+                    .program_name(env!("CARGO_PKG_NAME"))
+                    .version(env!("CARGO_PKG_VERSION"))
+                    .website(env!("CARGO_PKG_HOMEPAGE"))
+                    .build()
+                    .show();
+            }
         }
     }
 
@@ -317,6 +361,9 @@ impl SimpleComponent for AppModel {
         }
     }
 }
+
+relm4::new_action_group!(WindowActionGroup, "win");
+relm4::new_stateless_action!(AboutAction, WindowActionGroup, "about");
 
 /// Creates a new [`gtk::AppChooserDialog`], shows it, and launches the selected application, if
 /// any.
