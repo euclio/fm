@@ -10,8 +10,10 @@ glib::wrapper! {
 
 impl EmblemedPaintable {
     pub fn new(icon: &gdk::Paintable, emblem: &gdk::Paintable) -> Self {
-        Object::new(&[("icon", &icon), ("emblem", &emblem)])
-            .expect("unable to created EmblemedPaintable")
+        Object::builder()
+            .property("icon", icon)
+            .property("emblem", emblem)
+            .build()
     }
 }
 
@@ -53,7 +55,7 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
-        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &ParamSpec) -> Value {
+        fn property(&self, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "icon" => self.icon.borrow().to_value(),
                 "emblem" => self.emblem.borrow().to_value(),
@@ -61,7 +63,7 @@ mod imp {
             }
         }
 
-        fn set_property(&self, _obj: &Self::Type, _id: usize, value: &Value, pspec: &ParamSpec) {
+        fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "icon" => {
                     self.icon.replace(value.get().unwrap());
@@ -75,7 +77,7 @@ mod imp {
     }
 
     impl PaintableImpl for EmblemedPaintable {
-        fn snapshot(&self, _obj: &Self::Type, snapshot: &gdk::Snapshot, width: f64, height: f64) {
+        fn snapshot(&self, snapshot: &gdk::Snapshot, width: f64, height: f64) {
             self.icon
                 .borrow()
                 .as_ref()

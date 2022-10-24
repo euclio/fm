@@ -8,8 +8,11 @@ glib::wrapper! {
 
 impl PlaceObject {
     pub fn new(name: &str, file: &gio::File, icon: &gio::Icon) -> Self {
-        Object::new(&[("name", &name), ("file", &file), ("icon", &icon)])
-            .expect("unable to create PlaceObject")
+        Object::builder()
+            .property("name", name)
+            .property("file", file)
+            .property("icon", icon)
+            .build()
     }
 }
 
@@ -63,7 +66,7 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
-        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &ParamSpec) -> Value {
+        fn property(&self, __id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
                 "name" => self.name.borrow().to_value(),
                 "file" => self.file.borrow().to_value(),
@@ -72,7 +75,7 @@ mod imp {
             }
         }
 
-        fn set_property(&self, _obj: &Self::Type, _id: usize, value: &Value, pspec: &ParamSpec) {
+        fn set_property(&self, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "name" => {
                     self.name.replace(value.get().unwrap());

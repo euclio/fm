@@ -326,13 +326,13 @@ fn register_context_actions(
 ) {
     let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
 
-    group.add_action(RelmAction::<OpenDefaultAction>::new_with_target_value(
+    group.add_action(&RelmAction::<OpenDefaultAction>::new_with_target_value(
         move |_, uri: String| {
             let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
         },
     ));
 
-    group.add_action(RelmAction::<OpenChooserAction>::new_with_target_value(
+    group.add_action(&RelmAction::<OpenChooserAction>::new_with_target_value(
         clone!(@strong sender => move |_, uri: String| {
             let file = gio::File::for_uri(&uri);
             sender.output(AppMsg::ChooseAndLaunchApp(file));
@@ -344,7 +344,7 @@ fn register_context_actions(
     // parameter. We have to disconnect the old handler each time because registering a new handler
     // is additive.
     let previous_handler_id = RefCell::new(None);
-    group.add_action(RelmAction::<RenameAction>::new_with_target_value(
+    group.add_action(&RelmAction::<RenameAction>::new_with_target_value(
         clone!(@weak rename_popover, @strong sender => move |_, uri: String| {
             let root = rename_popover.child().unwrap().downcast::<gtk::Box>().unwrap();
             let entry = root.first_child().unwrap().downcast::<gtk::Entry>().unwrap();
@@ -396,7 +396,7 @@ fn register_context_actions(
         }),
     ));
 
-    group.add_action(RelmAction::<TrashFileAction>::new_with_target_value(
+    group.add_action(&RelmAction::<TrashFileAction>::new_with_target_value(
         move |_, uri: String| {
             let file = gio::File::for_uri(&uri);
             let _ = file.trash(None::<&gio::Cancellable>);

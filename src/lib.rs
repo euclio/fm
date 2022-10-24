@@ -219,7 +219,7 @@ impl SimpleComponent for AppModel {
         let about_action: RelmAction<AboutAction> = RelmAction::new_stateless(move |_| {
             sender.input(AppMsg::About);
         });
-        group.add_action(about_action);
+        group.add_action(&about_action);
 
         widgets
             .main_window
