@@ -1,8 +1,5 @@
 //! Widget that displays file metadata and a small preview.
 
-use std::time::{Duration, SystemTime};
-
-use chrono::{DateTime, Local};
 use gtk::{gdk, gio, glib};
 use log::*;
 use mime::Mime;
@@ -16,6 +13,9 @@ use crate::util;
 /// The buffer size used to read the beginning of a file to predict its mime type and preview its
 /// contents.
 const PREVIEW_BUFFER_SIZE: usize = 4096;
+
+/// String displayed if some information was unable to be determined, such as the creation time.
+const MISSING_INFO: &str = "—";
 
 #[derive(Debug)]
 enum FilePreview {
@@ -35,8 +35,8 @@ struct FileInfo {
     mime: Mime,
     language: Option<sourceview::Language>,
     size: u64,
-    created: SystemTime,
-    modified: SystemTime,
+    created: Option<glib::DateTime>,
+    modified: Option<glib::DateTime>,
     preview: FilePreview,
 }
 
@@ -169,8 +169,6 @@ impl SimpleComponent for FilePreviewModel {
                 None
             }
             FilePreviewMsg::NewSelection(file) => {
-                let path = file.path();
-
                 // TODO: make async?
                 let file_info = match file.query_info(
                     &[
@@ -232,19 +230,8 @@ impl SimpleComponent for FilePreviewModel {
                     mime,
                     preview,
                     size: file_info.size() as u64,
-                    // FIXME: Use `creation_date_time()` if a new enough version of glib is being used.
-                    created: path
-                        .and_then(|path| {
-                            path.metadata()
-                                .or_else(|_| path.symlink_metadata())
-                                .and_then(|metadata| metadata.created())
-                                .ok()
-                        })
-                        .unwrap_or(SystemTime::UNIX_EPOCH),
-                    modified: file_info
-                        .modification_date_time()
-                        .map(|dt| SystemTime::UNIX_EPOCH + Duration::from_secs(dt.to_unix() as u64))
-                        .unwrap_or(SystemTime::UNIX_EPOCH),
+                    created: file_info.creation_date_time(),
+                    modified: file_info.modification_date_time(),
                 })
             }
         }
@@ -258,10 +245,18 @@ impl SimpleComponent for FilePreviewModel {
                 file.mime,
                 glib::format_size(file.size),
             ));
-            widgets.created.set_text(&format_system_time(file.created));
-            widgets
-                .modified
-                .set_text(&format_system_time(file.modified));
+            widgets.created.set_text(
+                &file
+                    .created
+                    .as_ref()
+                    .map_or(String::from(MISSING_INFO), format_datetime),
+            );
+            widgets.modified.set_text(
+                &file
+                    .modified
+                    .as_ref()
+                    .map_or(String::from(MISSING_INFO), format_datetime),
+            );
 
             widgets.picture.set_visible(false);
             widgets.image.set_visible(false);
@@ -322,8 +317,7 @@ fn is_plain_text(mime: &Mime) -> bool {
     }
 }
 
-/// Formats a `SystemTime` as a human-readable date string.
-fn format_system_time(time: SystemTime) -> String {
-    let datetime: DateTime<Local> = time.into();
-    datetime.format("%A, %B %-d, %Y at %-I:%M %p").to_string()
+/// Formats a [`GDateTime`](glib::DateTime) as a human-readable date string.
+fn format_datetime(dt: &glib::DateTime) -> String {
+    dt.format("%A, %B %-d, %Y at %-I:%M %p").unwrap().into()
 }

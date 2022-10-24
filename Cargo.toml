@@ -11,7 +11,6 @@ description = "A small, general-purpose file manager."
 
 [dependencies]
 anyhow = "1.0.51"
-chrono = "0.4.19"
 clap = { version = "3.1.18", features = ["derive"] }
 directories = "4.0.1"
 educe = { version = "0.4.19", features = ["Debug"], default-features = false }
@@ -24,3 +23,6 @@ relm4 = { version = "0.5.0-beta.4", features = ["libadwaita", "libpanel"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
 sourceview5 = "0.5.0"
+
+# Enable features in transitive dependencies
+gio_ = { package = "gio", features = ["v2_70"] }
