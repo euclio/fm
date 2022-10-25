@@ -214,7 +214,7 @@ impl SimpleComponent for FilePreviewModel {
 
                 let preview = match (mime.type_(), mime.subtype()) {
                     (mime::IMAGE, _) => FilePreview::Image(file),
-                    _ if is_plain_text(&mime) => {
+                    _ if is_plain_text(&mime) && !contents.contains(&b'\0') => {
                         FilePreview::Text(String::from_utf8_lossy(&contents).into())
                     }
                     _ => {
