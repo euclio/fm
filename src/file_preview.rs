@@ -1,5 +1,6 @@
 //! Widget that displays file metadata and a small preview.
 
+use glib::GString;
 use gtk::{gdk, gio, glib};
 use log::*;
 use mime::Mime;
@@ -191,7 +192,9 @@ impl SimpleComponent for FilePreviewModel {
                     }
                 };
 
-                let content_type = file_info.content_type().unwrap();
+                let content_type = file_info
+                    .content_type()
+                    .unwrap_or_else(|| GString::from("application/octet-stream"));
 
                 let contents = if file
                     .query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
