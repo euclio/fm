@@ -234,6 +234,7 @@ dependencies = [
  "educe",
  "env_logger",
  "gio",
+ "libadwaita",
  "log",
  "mime",
  "once_cell",

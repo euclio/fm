@@ -1,5 +1,6 @@
 //! Dialog component for mounting a new mountable.
 
+use adw::prelude::*;
 use gtk::prelude::*;
 use relm4::prelude::*;
 
@@ -41,16 +42,21 @@ impl SimpleComponent for Mount {
 
             add_button: ("Cancel", gtk::ResponseType::Cancel),
 
-            gtk::Entry {
+            gtk::ListBox {
+                add_css_class: "boxed-list",
+                set_selection_mode: gtk::SelectionMode::None,
 
-            },
+                adw::EntryRow {
+                    set_title: "URI",
+                },
 
-            gtk::Entry {
+                adw::EntryRow {
+                    set_title: "User",
+                },
 
-            },
-
-            gtk::PasswordEntry {
-
+                adw::PasswordEntryRow {
+                    set_title: "Password",
+                },
             },
 
             connect_response[sender] => move |_, response| {

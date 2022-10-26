@@ -241,7 +241,7 @@ impl SimpleComponent for AppModel {
         let mount_action: RelmAction<MountAction> = RelmAction::new_stateless(move |_| {
             sender_.input(AppMsg::Mount);
         });
-        group.add_action(mount_action);
+        group.add_action(&mount_action);
 
         widgets
             .main_window

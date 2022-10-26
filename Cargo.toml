@@ -25,4 +25,5 @@ serde_json = "1.0.79"
 sourceview5 = "0.5.0"
 
 # Enable features in transitive dependencies
+adw_ = { package = "libadwaita", features = ["v1_2"] }
 gio_ = { package = "gio", features = ["v2_70"] }
