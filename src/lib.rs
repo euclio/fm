@@ -283,7 +283,7 @@ impl SimpleComponent for AppModel {
                     .map(|(_, _, _, _, path, _, _)| path)
                     .expect("last visited directory must be a valid URI");
 
-                let diff = pathdiff::diff_paths(&file_path, &last_dir_path)
+                let diff = pathdiff::diff_paths(file_path, &last_dir_path)
                     .expect("new selection must be relative to the listed directories");
 
                 info!(
