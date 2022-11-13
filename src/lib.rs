@@ -21,6 +21,7 @@ mod alert;
 mod config;
 mod directory_list;
 mod file_preview;
+mod mount;
 mod places_sidebar;
 mod util;
 
@@ -28,6 +29,7 @@ use crate::alert::{AlertModel, AlertMsg};
 use crate::config::State;
 use crate::directory_list::{Directory, Selection};
 use crate::file_preview::{FilePreviewModel, FilePreviewMsg};
+use crate::mount::{Mount, MountMsg};
 use crate::places_sidebar::PlacesSidebarModel;
 
 #[derive(Debug)]
@@ -41,6 +43,7 @@ pub struct AppModel {
 
     error_alert: Controller<AlertModel>,
     file_preview: Controller<FilePreviewModel>,
+    mount: Controller<Mount>,
     _places_sidebar: Controller<PlacesSidebarModel>,
 
     /// Whether the directory panes scroll window should update its scroll position to the upper
@@ -87,6 +90,9 @@ pub enum AppMsg {
 
     /// Display the about window.
     About,
+
+    /// Launch a dialog to mount a new mountable.
+    Mount,
 }
 
 #[relm4::component(pub)]
@@ -161,7 +167,12 @@ impl SimpleComponent for AppModel {
 
     menu! {
         primary_menu: {
-            "About" => AboutAction,
+            section! {
+                "Connect to server..." => MountAction,
+            },
+            section! {
+                "About" => AboutAction,
+            },
         }
     }
 
@@ -201,6 +212,10 @@ impl SimpleComponent for AppModel {
                 widgets.directory_panes.clone(),
                 sender.input_sender(),
             ),
+            mount: Mount::builder()
+                .transient_for(&widgets.main_window)
+                .launch(())
+                .forward(sender.input_sender(), identity),
             error_alert: AlertModel::builder()
                 .transient_for(widgets.main_window.clone())
                 .launch(())
@@ -216,10 +231,16 @@ impl SimpleComponent for AppModel {
 
         let group = RelmActionGroup::<WindowActionGroup>::new();
 
+        let sender_ = sender.clone();
         let about_action: RelmAction<AboutAction> = RelmAction::new_stateless(move |_| {
-            sender.input(AppMsg::About);
+            sender_.input(AppMsg::About);
         });
         group.add_action(&about_action);
+
+        let mount_action: RelmAction<MountAction> = RelmAction::new_stateless(move |_| {
+            sender.input(AppMsg::Mount);
+        });
+        group.add_action(&mount_action);
 
         widgets
             .main_window
@@ -337,6 +358,7 @@ impl SimpleComponent for AppModel {
                     .build()
                     .show();
             }
+            AppMsg::Mount => self.mount.emit(MountMsg::Mount),
         }
     }
 
@@ -364,6 +386,7 @@ impl SimpleComponent for AppModel {
 
 relm4::new_action_group!(WindowActionGroup, "win");
 relm4::new_stateless_action!(AboutAction, WindowActionGroup, "about");
+relm4::new_stateless_action!(MountAction, WindowActionGroup, "mount");
 
 /// Creates a new [`gtk::AppChooserDialog`], shows it, and launches the selected application, if
 /// any.
