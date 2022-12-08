@@ -2,11 +2,32 @@
 
 use std::fmt;
 
-use relm4::gtk::{self, gdk, gio, prelude::*};
+use relm4::gtk::{self, gdk, gio, glib, prelude::*};
 
 mod emblemed_paintable;
 
 use emblemed_paintable::EmblemedPaintable;
+
+/// Extension functions for [`Result`]s containing [`GError`](glib::Error)s.
+pub trait GResultExt {
+    /// Filter out [`gio::IOErrorEnum::FailedHandled`] errors, since these indicate that the error
+    /// was already handled.
+    fn filter_handled(self) -> Self;
+}
+
+impl GResultExt for Result<(), glib::Error> {
+    fn filter_handled(self) -> Self {
+        if let Some(gio::IOErrorEnum::FailedHandled) = self
+            .as_ref()
+            .err()
+            .and_then(|e| e.kind::<gio::IOErrorEnum>())
+        {
+            Ok(())
+        } else {
+            self
+        }
+    }
+}
 
 /// Returns a [`gdk::Paintable`] that should be used for file icons for files.
 ///

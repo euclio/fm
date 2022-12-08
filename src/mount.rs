@@ -4,6 +4,7 @@ use adw::prelude::*;
 use gtk::gio;
 use relm4::prelude::*;
 
+use crate::util::GResultExt;
 use crate::AppMsg;
 
 #[derive(Debug)]
@@ -100,6 +101,7 @@ impl Component for Mount {
                             Some(&mount_operation),
                         )
                         .await
+                        .filter_handled()
                     {
                         Ok(_) => (),
                         Err(e) => sender.output(AppMsg::Error(Box::new(e))).unwrap(),
