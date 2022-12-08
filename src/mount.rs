@@ -33,7 +33,7 @@ impl Component for Mount {
     type Widgets = MountWidgets;
 
     view! {
-        dialog = gtk::Dialog::builder()
+        gtk::Dialog::builder()
             .title("Connect to Server")
             .use_header_bar(gtk::Settings::default().unwrap().is_gtk_dialogs_use_header() as i32)
             .build() {
@@ -83,12 +83,7 @@ impl Component for Mount {
         ComponentParts { model, widgets }
     }
 
-    fn update_with_view(
-        &mut self,
-        widgets: &mut Self::Widgets,
-        msg: Self::Input,
-        sender: ComponentSender<Self>,
-    ) {
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
         match msg {
             MountMsg::Mount => {
                 self.visible = true;
@@ -96,9 +91,8 @@ impl Component for Mount {
             MountMsg::Response(gtk::ResponseType::Accept) => {
                 let uri_file = gio::File::for_uri(&self.uri_buffer.text());
                 let mount_operation =
-                    gtk::MountOperation::new(Some(widgets.dialog.upcast_ref::<gtk::Window>()));
+                    gtk::MountOperation::new(Some(root.upcast_ref::<gtk::Window>()));
 
-                let sender = sender.clone();
                 relm4::spawn_local(async move {
                     match uri_file
                         .mount_enclosing_volume_future(
@@ -108,7 +102,7 @@ impl Component for Mount {
                         .await
                     {
                         Ok(_) => (),
-                        Err(e) => sender.output(AppMsg::Error(Box::new(e))),
+                        Err(e) => sender.output(AppMsg::Error(Box::new(e))).unwrap(),
                     }
                 });
 
@@ -122,7 +116,5 @@ impl Component for Mount {
             }
             _ => (),
         }
-
-        self.update_view(widgets, sender);
     }
 }

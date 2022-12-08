@@ -8,7 +8,7 @@ use glib::translate::{from_glib_full, IntoGlib};
 use glib::{clone, closure, Object};
 use log::*;
 use relm4::actions::{ActionGroupName, RelmAction, RelmActionGroup};
-use relm4::factory::{DynamicIndex, FactoryComponent, FactoryComponentSender};
+use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
 use relm4::{gtk, panel};
 
@@ -81,11 +81,7 @@ impl FactoryComponent for Directory {
         root
     }
 
-    fn init_model(
-        dir: Self::Init,
-        _index: &DynamicIndex,
-        _sender: FactoryComponentSender<Self>,
-    ) -> Self {
+    fn init_model(dir: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
         debug_assert!(
             dir.query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
                 == gio::FileType::Directory
@@ -124,7 +120,7 @@ impl FactoryComponent for Directory {
         _index: &DynamicIndex,
         root: &Self::Root,
         _returned_widget: &gtk::Widget,
-        sender: FactoryComponentSender<Self>,
+        sender: FactorySender<Self>,
     ) -> Self::Widgets {
         let factory = gtk::SignalListItemFactory::new();
 
@@ -183,7 +179,7 @@ fn build_list_item_view(
     dir: gio::File,
     selection: &gtk::SingleSelection,
     list_item: &gtk::ListItem,
-    sender: &FactoryComponentSender<Directory>,
+    sender: &FactorySender<Directory>,
 ) {
     let root = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -322,7 +318,7 @@ fn build_rename_popover(parent: &gtk::Widget) -> gtk::Popover {
 fn register_context_actions(
     list_item_view: &gtk::Widget,
     rename_popover: &gtk::Popover,
-    sender: FactoryComponentSender<Directory>,
+    sender: FactorySender<Directory>,
 ) {
     let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
 
@@ -414,10 +410,7 @@ fn register_context_actions(
 ///
 /// The drop target accepts [`gio::File`]s and rejects files that are already in the same
 /// directory.
-fn new_drop_target_for_dir(
-    dir: gio::File,
-    sender: FactoryComponentSender<Directory>,
-) -> gtk::DropTarget {
+fn new_drop_target_for_dir(dir: gio::File, sender: FactorySender<Directory>) -> gtk::DropTarget {
     let drop_target = gtk::DropTarget::builder()
         .actions(gdk::DragAction::MOVE)
         .preload(true)
@@ -458,10 +451,7 @@ fn new_drop_target_for_dir(
 }
 
 /// Notifies the main component of the path of a new selection.
-fn send_new_selection(
-    selection: &gtk::SingleSelection,
-    sender: &FactoryComponentSender<Directory>,
-) {
+fn send_new_selection(selection: &gtk::SingleSelection, sender: &FactorySender<Directory>) {
     let selection = if let Some(item) = selection.selected_item() {
         let file_info = item.downcast::<gio::FileInfo>().unwrap();
 
@@ -552,7 +542,7 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &gio::File) -> gio::Menu 
 }
 
 /// Opens the default application for the given file.
-fn open_application_for_file(file: &gio::File, sender: &FactoryComponentSender<Directory>) {
+fn open_application_for_file(file: &gio::File, sender: &FactorySender<Directory>) {
     info!("opening {} in external application", file.uri());
 
     if let Err(e) =

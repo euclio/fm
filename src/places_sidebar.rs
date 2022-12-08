@@ -329,7 +329,7 @@ impl SimpleComponent for PlacesSidebarModel {
     fn update(&mut self, msg: PlacesSidebarMsg, sender: ComponentSender<PlacesSidebarModel>) {
         match msg {
             PlacesSidebarMsg::SelectionChanged(file) => {
-                sender.output(AppMsg::NewRoot(file));
+                sender.output(AppMsg::NewRoot(file)).unwrap();
             }
             PlacesSidebarMsg::Update => self.update_mounts(),
         }
