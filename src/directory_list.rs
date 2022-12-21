@@ -165,7 +165,32 @@ impl FactoryComponent for Directory {
         let drop_target = new_drop_target_for_dir(dir, sender);
         list_view.add_controller(&drop_target);
 
-        root.set_child(Some(&list_view));
+        let stack = gtk::Stack::builder().vhomogeneous(false).build();
+
+        let spinner_page = stack.add_child(
+            &gtk::Spinner::builder()
+                .halign(gtk::Align::Center)
+                .valign(gtk::Align::Center)
+                .spinning(true)
+                .build(),
+        );
+        spinner_page.set_name("spinner");
+
+        let listing_page = stack.add_child(&list_view);
+        listing_page.set_name("listing");
+
+        self.directory_list
+            .property_expression("loading")
+            .chain_closure::<String>(closure!(|_: Option<Object>, loading: bool| {
+                if loading {
+                    String::from("spinner")
+                } else {
+                    String::from("listing")
+                }
+            }))
+            .bind(&stack, "visible-child-name", gtk::Widget::NONE);
+
+        root.set_child(Some(&stack));
 
         DirectoryWidgets
     }
