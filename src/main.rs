@@ -26,7 +26,7 @@ fn main() -> Result<()> {
     // Call `gtk::init` manually because we instantiate GTK types in the app model.
     gtk::init().unwrap();
 
-    relm4::set_global_css(include_bytes!("styles.css"));
+    relm4::set_global_css(include_str!("styles.css"));
     let app = RelmApp::new("io.github.fm");
     app.run::<AppModel>(fs::canonicalize(args.file)?);
 
