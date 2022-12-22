@@ -256,7 +256,9 @@ impl SimpleComponent for PlacesSidebarModel {
         let widgets = view_output!();
 
         let factory = gtk::SignalListItemFactory::new();
-        factory.connect_setup(move |_, list_item| {
+        factory.connect_setup(move |_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+
             let root = gtk::Box::builder()
                 .orientation(gtk::Orientation::Horizontal)
                 .spacing(5)
@@ -268,7 +270,7 @@ impl SimpleComponent for PlacesSidebarModel {
             let name_label = gtk::Label::new(None);
             root.append(&name_label);
 
-            let list_item_expression = gtk::ConstantExpression::new(list_item);
+            let list_item_expression = gtk::ConstantExpression::new(item);
             let place_expression = gtk::PropertyExpression::new(
                 gtk::ListItem::static_type(),
                 Some(&list_item_expression),
@@ -289,7 +291,7 @@ impl SimpleComponent for PlacesSidebarModel {
             );
             icon_expression.bind(&image, "gicon", Some(&image));
 
-            list_item.set_child(Some(&root));
+            item.set_child(Some(&root));
         });
 
         model.places_model.connect_selection_changed(

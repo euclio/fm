@@ -129,8 +129,9 @@ impl FactoryComponent for Directory {
             @strong dir,
             @strong sender as sender,
             @weak self.list_model as selection,
-        => move |_, list_item| {
-            build_list_item_view(dir.clone(), &selection, list_item, &sender);
+        => move |_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+            build_list_item_view(dir.clone(), &selection, item, &sender);
         }));
 
         let sender_ = sender.clone();
