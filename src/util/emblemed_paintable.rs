@@ -59,7 +59,7 @@ mod imp {
             match pspec.name() {
                 "icon" => self.icon.borrow().to_value(),
                 "emblem" => self.emblem.borrow().to_value(),
-                name => panic!("unknown property name: {}", name),
+                name => panic!("unknown property name: {name}"),
             }
         }
 
@@ -71,7 +71,7 @@ mod imp {
                 "emblem" => {
                     self.emblem.replace(value.get().unwrap());
                 }
-                name => panic!("unknown property name: {}", name),
+                name => panic!("unknown property name: {name}"),
             }
         }
     }

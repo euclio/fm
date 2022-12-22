@@ -71,7 +71,7 @@ mod imp {
                 "name" => self.name.borrow().to_value(),
                 "file" => self.file.borrow().to_value(),
                 "icon" => self.icon.borrow().to_value(),
-                name => panic!("unknown property name: {}", name),
+                name => panic!("unknown property name: {name}"),
             }
         }
 
@@ -86,7 +86,7 @@ mod imp {
                 "icon" => {
                     self.icon.replace(value.get().unwrap());
                 }
-                name => panic!("unknown property name: {}", name),
+                name => panic!("unknown property name: {name}"),
             }
         }
     }
