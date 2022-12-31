@@ -63,12 +63,13 @@ impl SimpleComponent for FilePreviewModel {
                 #[watch]
                 set_visible: model.file.is_some(),
 
-                gtk::Box {
+                #[name = "stack"]
+                gtk::Stack {
                     add_css_class: "file-preview",
+                    set_vhomogeneous: false,
 
                     #[name = "image"]
                     gtk::Image {
-                        set_visible: false,
                         set_hexpand: true,
                         set_icon_size: gtk::IconSize::Large,
                     },
@@ -76,7 +77,6 @@ impl SimpleComponent for FilePreviewModel {
                     #[name = "picture"]
                     gtk::Picture {
                         add_css_class: "bordered",
-                        set_visible: false,
                         set_hexpand: true,
                     },
 
@@ -85,7 +85,6 @@ impl SimpleComponent for FilePreviewModel {
                         add_css_class: "bordered",
                         set_hexpand: true,
                         set_propagate_natural_height: true,
-                        set_visible: false,
                         set_overflow: gtk::Overflow::Hidden,
 
                         #[name = "text"]
@@ -261,22 +260,17 @@ impl SimpleComponent for FilePreviewModel {
                     .map_or(String::from(MISSING_INFO), format_datetime),
             );
 
-            widgets.picture.set_visible(false);
-            widgets.image.set_visible(false);
-            widgets.text_container.set_visible(false);
-
             match &file.preview {
                 FilePreview::Image(file) => {
                     widgets.picture.set_file(Some(file));
-                    widgets.picture.set_visible(true);
+                    widgets.stack.set_visible_child(&widgets.picture);
                 }
                 FilePreview::Icon(paintable) => {
                     widgets.image.set_paintable(Some(paintable));
-                    widgets.image.set_visible(true);
+                    widgets.stack.set_visible_child(&widgets.image);
                 }
                 FilePreview::Text(text) => {
                     widgets.text.buffer().set_text(text);
-                    widgets.text_container.set_visible(true);
 
                     let buffer = widgets
                         .text
@@ -285,6 +279,8 @@ impl SimpleComponent for FilePreviewModel {
                         .expect("sourceview was not backed by sourceview buffer");
 
                     buffer.set_language(file.language.as_ref());
+
+                    widgets.stack.set_visible_child(&widgets.text_container);
                 }
             }
         }
