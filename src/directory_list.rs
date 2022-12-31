@@ -269,7 +269,7 @@ fn build_list_item_view(
     let click_controller = gtk::GestureClick::builder()
         .button(BUTTON_RIGHT_CLICK)
         .build();
-    click_controller.connect_released(
+    click_controller.connect_pressed(
         clone!(@strong dir, @weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
             let target = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
             handle_right_click(&dir, &selection, &list_item, menu, target);
