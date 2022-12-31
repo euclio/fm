@@ -421,7 +421,10 @@ fn register_context_actions(
     group.add_action(&RelmAction::<TrashFileAction>::new_with_target_value(
         move |_, uri: String| {
             let file = gio::File::for_uri(&uri);
-            let _ = file.trash(None::<&gio::Cancellable>);
+            let parent = file.parent().expect("listed file must have a parent");
+            if let Ok(()) = file.trash(None::<&gio::Cancellable>) {
+                sender.output(AppMsg::NewSelection(Selection::File(parent)));
+            }
         },
     ));
 
