@@ -1,6 +1,6 @@
 //! Utility functions.
 
-use std::fmt;
+use std::fmt::{self, Debug};
 
 use relm4::gtk::{self, gdk, gio, glib, prelude::*};
 
@@ -74,4 +74,61 @@ pub fn icon_for_file(
 /// Format a [`GFile`](gio::File) as its URI for nicer [`Debug`] output.
 pub fn fmt_file_as_uri(file: &gio::File, f: &mut fmt::Formatter) -> fmt::Result {
     f.write_str(&file.uri())
+}
+
+/// Format a slice of [`GFile`](gio::File)s as URIs for nicer [`Debug`] output.
+pub fn fmt_files_as_uris(files: &[gio::File], f: &mut fmt::Formatter) -> fmt::Result {
+    f.debug_list()
+        .entries(files.iter().map(GFileDebug))
+        .finish()
+}
+
+struct GFileDebug<'a>(&'a gio::File);
+
+impl Debug for GFileDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_file_as_uri(self.0, f)
+    }
+}
+
+/// Extension methods for [`gtk::Bitset`].
+pub trait BitsetExt {
+    /// Iterate directly over the bitset.
+    fn iter(&self) -> BitsetIter;
+}
+
+pub struct BitsetIter<'a> {
+    first_value: Option<u32>,
+    iter: Option<gtk::BitsetIter<'a>>,
+}
+
+impl Iterator for BitsetIter<'_> {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(iter) = &mut self.iter {
+            if let Some(first_value) = self.first_value.take() {
+                Some(first_value)
+            } else {
+                iter.next()
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl BitsetExt for gtk::Bitset {
+    fn iter(&self) -> BitsetIter {
+        match gtk::BitsetIter::init_first(self) {
+            Some((iter, first_value)) => BitsetIter {
+                first_value: Some(first_value),
+                iter: Some(iter),
+            },
+            None => BitsetIter {
+                first_value: None,
+                iter: None,
+            },
+        }
+    }
 }

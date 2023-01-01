@@ -9,6 +9,7 @@ use relm4::{adw, gtk, ComponentParts, ComponentSender, SimpleComponent};
 use sourceview::prelude::*;
 use sourceview5 as sourceview;
 
+use crate::directory_list::FileSelection;
 use crate::util;
 
 /// The buffer size used to read the beginning of a file to predict its mime type and preview its
@@ -162,80 +163,7 @@ impl SimpleComponent for FilePreviewModel {
 
         self.file = match msg {
             FilePreviewMsg::Hide => None,
-            FilePreviewMsg::NewSelection(file)
-                if file.query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
-                    == gio::FileType::Directory =>
-            {
-                None
-            }
-            FilePreviewMsg::NewSelection(file) => {
-                // TODO: make async?
-                let file_info = match file.query_info(
-                    &[
-                        *gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
-                        *gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
-                        *gio::FILE_ATTRIBUTE_STANDARD_ICON,
-                        *gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
-                        *gio::FILE_ATTRIBUTE_STANDARD_SIZE,
-                        *gio::FILE_ATTRIBUTE_TIME_CREATED,
-                        *gio::FILE_ATTRIBUTE_TIME_MODIFIED,
-                    ]
-                    .join(","),
-                    gio::FileQueryInfoFlags::NONE,
-                    gio::Cancellable::NONE,
-                ) {
-                    Ok(info) => info,
-                    Err(e) => {
-                        warn!("unable to query file info: {}", e);
-                        return;
-                    }
-                };
-
-                let content_type = file_info
-                    .content_type()
-                    .unwrap_or_else(|| GString::from("application/octet-stream"));
-
-                let contents = if file
-                    .query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
-                    == gio::FileType::Regular
-                {
-                    read_start_of_file(&file).unwrap_or_else(|_| glib::Bytes::from_static(&[]))
-                } else {
-                    glib::Bytes::from_static(&[])
-                };
-
-                let language = sourceview::LanguageManager::default()
-                    .guess_language(file.path(), Some(&content_type));
-
-                let mime = gio::content_type_get_mime_type(&content_type)
-                    .expect("unable to determine mime type")
-                    .parse::<Mime>()
-                    .expect("could not parse guessed mime type");
-
-                info!("identified file as {}", mime);
-
-                let preview = match (mime.type_(), mime.subtype()) {
-                    (mime::IMAGE, _) => FilePreview::Image(file),
-                    _ if is_plain_text(&mime) && !contents.contains(&b'\0') => {
-                        FilePreview::Text(String::from_utf8_lossy(&contents).into())
-                    }
-                    _ => {
-                        let icon_theme =
-                            gtk::IconTheme::for_display(&gdk::Display::default().unwrap());
-                        FilePreview::Icon(util::icon_for_file(&icon_theme, 128, &file_info))
-                    }
-                };
-
-                Some(FileInfo {
-                    display_name: file_info.display_name().to_string(),
-                    language,
-                    mime,
-                    preview,
-                    size: file_info.size() as u64,
-                    created: file_info.creation_date_time(),
-                    modified: file_info.modification_date_time(),
-                })
-            }
+            FilePreviewMsg::NewSelection(selection) => preview_from_selection(selection),
         }
     }
 
@@ -290,10 +218,90 @@ impl SimpleComponent for FilePreviewModel {
 #[derive(Debug)]
 pub enum FilePreviewMsg {
     /// Update the preview to show the contents of a new file.
-    NewSelection(gio::File),
+    NewSelection(FileSelection),
 
     /// Empty the contents of the preview.
     Hide,
+}
+
+fn preview_from_selection(mut selection: FileSelection) -> Option<FileInfo> {
+    if selection.files.len() == 1 {
+        let file = selection.files.pop().unwrap();
+
+        if file.query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+            == gio::FileType::Directory
+        {
+            return None;
+        }
+
+        // TODO: make async?
+        let file_info = match file.query_info(
+            &[
+                *gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                *gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+                *gio::FILE_ATTRIBUTE_STANDARD_ICON,
+                *gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
+                *gio::FILE_ATTRIBUTE_STANDARD_SIZE,
+                *gio::FILE_ATTRIBUTE_TIME_CREATED,
+                *gio::FILE_ATTRIBUTE_TIME_MODIFIED,
+            ]
+            .join(","),
+            gio::FileQueryInfoFlags::NONE,
+            gio::Cancellable::NONE,
+        ) {
+            Ok(info) => info,
+            Err(e) => {
+                warn!("unable to query file info: {}", e);
+                return None;
+            }
+        };
+
+        let content_type = file_info
+            .content_type()
+            .unwrap_or_else(|| GString::from("application/octet-stream"));
+
+        let contents = if file
+            .query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+            == gio::FileType::Regular
+        {
+            read_start_of_file(&file).unwrap_or_else(|_| glib::Bytes::from_static(&[]))
+        } else {
+            glib::Bytes::from_static(&[])
+        };
+
+        let language =
+            sourceview::LanguageManager::default().guess_language(file.path(), Some(&content_type));
+
+        let mime = gio::content_type_get_mime_type(&content_type)
+            .expect("unable to determine mime type")
+            .parse::<Mime>()
+            .expect("could not parse guessed mime type");
+
+        info!("identified file as {}", mime);
+
+        let preview = match (mime.type_(), mime.subtype()) {
+            (mime::IMAGE, _) => FilePreview::Image(file),
+            _ if is_plain_text(&mime) && !contents.contains(&b'\0') => {
+                FilePreview::Text(String::from_utf8_lossy(&contents).into())
+            }
+            _ => {
+                let icon_theme = gtk::IconTheme::for_display(&gdk::Display::default().unwrap());
+                FilePreview::Icon(util::icon_for_file(&icon_theme, 128, &file_info))
+            }
+        };
+
+        Some(FileInfo {
+            display_name: file_info.display_name().to_string(),
+            language,
+            mime,
+            preview,
+            size: file_info.size() as u64,
+            created: file_info.creation_date_time(),
+            modified: file_info.modification_date_time(),
+        })
+    } else {
+        None
+    }
 }
 
 fn read_start_of_file(file: &gio::File) -> Result<glib::Bytes, glib::Error> {

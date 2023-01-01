@@ -12,7 +12,7 @@ use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
 use relm4::{gtk, panel};
 
-use crate::util;
+use crate::util::{self, BitsetExt};
 use crate::AppMsg;
 
 mod actions;
@@ -34,7 +34,7 @@ pub struct Directory {
     directory_list: gtk::DirectoryList,
 
     /// The sorted list model (with a selection) that is displayed in the list view.
-    list_model: gtk::SingleSelection,
+    list_model: gtk::MultiSelection,
 }
 
 impl Directory {
@@ -48,11 +48,24 @@ impl Directory {
 #[derive(Educe)]
 #[educe(Debug)]
 pub enum Selection {
-    /// A single-file selection.
-    File(#[educe(Debug(method = "util::fmt_file_as_uri"))] gio::File),
+    /// A selection of at least one file.
+    Files(FileSelection),
 
     /// No file is selected.
     None,
+}
+
+/// A selection of at least one file.
+#[derive(Educe)]
+#[educe(Debug)]
+pub struct FileSelection {
+    /// The shared parent of the selected files.
+    #[educe(Debug(method = "util::fmt_file_as_uri"))]
+    pub parent: gio::File,
+
+    /// The selected files.
+    #[educe(Debug(method = "util::fmt_files_as_uris"))]
+    pub files: Vec<gio::File>,
 }
 
 pub struct DirectoryWidgets;
@@ -104,10 +117,7 @@ impl FactoryComponent for Directory {
 
         let list_model = gtk::SortListModel::new(Some(&directory_list), Some(&file_sorter()));
 
-        let list_model = gtk::SingleSelection::builder()
-            .model(&list_model)
-            .autoselect(false)
-            .build();
+        let list_model = gtk::MultiSelection::new(Some(&list_model));
 
         Directory {
             directory_list,
@@ -203,7 +213,7 @@ impl FactoryComponent for Directory {
 /// or directory.
 fn build_list_item_view(
     dir: gio::File,
-    selection: &gtk::SingleSelection,
+    selection: &gtk::MultiSelection,
     list_item: &gtk::ListItem,
     sender: &FactorySender<Directory>,
 ) {
@@ -423,7 +433,10 @@ fn register_context_actions(
             let file = gio::File::for_uri(&uri);
             let parent = file.parent().expect("listed file must have a parent");
             if let Ok(()) = file.trash(None::<&gio::Cancellable>) {
-                sender.output(AppMsg::NewSelection(Selection::File(parent)));
+                sender.output(AppMsg::NewSelection(Selection::Files(FileSelection {
+                    parent,
+                    files: vec![],
+                })));
             }
         },
     ));
@@ -480,10 +493,12 @@ fn new_drop_target_for_dir(dir: gio::File, sender: FactorySender<Directory>) -> 
 }
 
 /// Notifies the main component of the path of a new selection.
-fn send_new_selection(selection: &gtk::SingleSelection, sender: &FactorySender<Directory>) {
-    let selection = if let Some(item) = selection.selected_item() {
-        let file_info = item.downcast::<gio::FileInfo>().unwrap();
+fn send_new_selection(selection: &gtk::MultiSelection, sender: &FactorySender<Directory>) {
+    let selected_set = selection.selection();
 
+    let selection = if selected_set.is_empty() {
+        Selection::None
+    } else {
         let directory_list = selection
             .model()
             .unwrap()
@@ -495,9 +510,17 @@ fn send_new_selection(selection: &gtk::SingleSelection, sender: &FactorySender<D
             .unwrap();
         let dir = directory_list.file().unwrap();
 
-        Selection::File(dir.child(file_info.name()))
-    } else {
-        Selection::None
+        let files = selected_set
+            .iter()
+            .flat_map(|pos| {
+                selection.item(pos).map(|item| {
+                    let file_info = item.downcast::<gio::FileInfo>().unwrap();
+                    dir.child(file_info.name())
+                })
+            })
+            .collect();
+
+        Selection::Files(FileSelection { parent: dir, files })
     };
 
     sender.output(AppMsg::NewSelection(selection));
@@ -506,7 +529,7 @@ fn send_new_selection(selection: &gtk::SingleSelection, sender: &FactorySender<D
 /// Handles the right click operation on an individual list item.
 fn handle_right_click(
     dir: &gio::File,
-    selection: &gtk::SingleSelection,
+    selection: &gtk::MultiSelection,
     list_item: &gtk::ListItem,
     menu: gtk::PopoverMenu,
     target: gdk::Rectangle,
@@ -515,7 +538,7 @@ fn handle_right_click(
     let position = list_item.position();
 
     if !list_item.is_selected() {
-        selection.set_selected(position);
+        selection.select_item(position, true);
     }
 
     if let Some(item) = list_item.item() {

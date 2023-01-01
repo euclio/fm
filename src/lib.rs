@@ -268,8 +268,14 @@ impl SimpleComponent for AppModel {
                     text: err.to_string(),
                 });
             }
-            AppMsg::NewSelection(Selection::File(file)) => {
+            AppMsg::NewSelection(Selection::Files(selection)) => {
                 let mut last_dir = self.last_dir();
+
+                let file = if selection.files.len() == 1 {
+                    selection.files.first().unwrap()
+                } else {
+                    &selection.parent
+                };
 
                 let file_path = match glib::Uri::split(&file.uri(), glib::UriFlags::NONE) {
                     Ok((_, _, _, _, path, _, _)) => PathBuf::from(&path),
@@ -287,8 +293,8 @@ impl SimpleComponent for AppModel {
                     .expect("new selection must be relative to the listed directories");
 
                 info!(
-                    "new selection: {}, last dir: {}, diff: {}",
-                    file.uri(),
+                    "new selection: {:?}, last dir: {}, diff: {}",
+                    selection,
                     last_dir.uri(),
                     diff.display()
                 );
@@ -316,7 +322,8 @@ impl SimpleComponent for AppModel {
                     }
                 }
 
-                self.file_preview.emit(FilePreviewMsg::NewSelection(file));
+                self.file_preview
+                    .emit(FilePreviewMsg::NewSelection(selection));
 
                 self.update_directory_scroll_position = true;
             }
