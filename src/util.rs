@@ -1,6 +1,9 @@
 //! Utility functions.
 
-use std::fmt::{self, Debug};
+use std::{
+    fmt::{self, Debug},
+    iter::{self, Chain, Once},
+};
 
 use relm4::gtk::{self, gdk, gio, glib, prelude::*};
 
@@ -97,38 +100,33 @@ pub trait BitsetExt {
     fn iter(&self) -> BitsetIter;
 }
 
-pub struct BitsetIter<'a> {
-    first_value: Option<u32>,
-    iter: Option<gtk::BitsetIter<'a>>,
-}
+pub struct BitsetIter<'a>(Option<Chain<Once<u32>, gtk::BitsetIter<'a>>>);
 
 impl Iterator for BitsetIter<'_> {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(iter) = &mut self.iter {
-            if let Some(first_value) = self.first_value.take() {
-                Some(first_value)
-            } else {
-                iter.next()
-            }
-        } else {
-            None
-        }
+        self.0.as_mut().and_then(|it| it.next())
     }
 }
 
 impl BitsetExt for gtk::Bitset {
     fn iter(&self) -> BitsetIter {
         match gtk::BitsetIter::init_first(self) {
-            Some((iter, first_value)) => BitsetIter {
-                first_value: Some(first_value),
-                iter: Some(iter),
-            },
-            None => BitsetIter {
-                first_value: None,
-                iter: None,
-            },
+            Some((iter, first_value)) => BitsetIter(Some(iter::once(first_value).chain(iter))),
+            None => BitsetIter(None),
         }
     }
 }
+
+/// Returns "s" if the provided expression is not equal to 1, otherwise the empty string.
+macro_rules! pluralize {
+    ($e:expr) => {
+        if $e != 1 {
+            "s"
+        } else {
+            ""
+        }
+    };
+}
+pub(crate) use pluralize;
