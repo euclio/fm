@@ -1,12 +1,15 @@
 //! Widget that displays file metadata and a small preview.
 
+use std::io::{self, prelude::*};
+
 use glib::GString;
 use gtk::{gdk, gio, glib};
+use itertools::{Itertools, MinMaxResult};
 use log::*;
 use mime::Mime;
 use relm4::gtk::prelude::*;
 use relm4::{adw, gtk, ComponentParts, ComponentSender, SimpleComponent};
-use sourceview::prelude::*;
+use sourceview::{prelude::*, Language};
 use sourceview5 as sourceview;
 
 use crate::directory_list::FileSelection;
@@ -21,8 +24,8 @@ const MISSING_INFO: &str = "—";
 
 #[derive(Debug)]
 enum FilePreview {
-    /// Plain text to be displayed in a [`FilePreviewWidgets::text`].
-    Text(String),
+    /// Text to be displayed in a [`FilePreviewWidgets::text`].
+    Text(String, Option<Language>),
 
     /// Image file, to be displayed in [`FilePreviewWidgets::picture`].
     Image(gio::File),
@@ -33,18 +36,19 @@ enum FilePreview {
 
 #[derive(Debug)]
 struct FileInfo {
-    display_name: String,
-    mime: Mime,
-    language: Option<sourceview::Language>,
-    size: u64,
-    created: Option<glib::DateTime>,
-    modified: Option<glib::DateTime>,
-    preview: FilePreview,
+    file: gio::File,
+    info: gio::FileInfo,
+    contents: Vec<u8>,
 }
 
 #[derive(Debug)]
 pub struct FilePreviewModel {
-    file: Option<FileInfo>,
+    info: Vec<FileInfo>,
+    preview: Option<FilePreview>,
+    file_name_text: String,
+    file_type_text: String,
+    created_text: String,
+    modified_text: String,
 }
 
 #[relm4::component(pub)]
@@ -62,7 +66,7 @@ impl SimpleComponent for FilePreviewModel {
                 set_orientation: gtk::Orientation::Vertical,
                 set_valign: gtk::Align::Center,
                 #[watch]
-                set_visible: model.file.is_some(),
+                set_visible: !model.info.is_empty(),
 
                 #[name = "stack"]
                 gtk::Stack {
@@ -101,11 +105,17 @@ impl SimpleComponent for FilePreviewModel {
                 gtk::Grid {
                     add_css_class: "file-preview-info",
                     attach[0, 0, 2, 1]: file_name = &gtk::Label {
+                        #[watch]
+                        set_text: &model.file_name_text,
+
                         add_css_class: "file-name",
                         set_hexpand: true,
                         set_halign: gtk::Align::Start,
                     },
                     attach[0, 1, 2, 1]: file_type = &gtk::Label {
+                        #[watch]
+                        set_text: &model.file_type_text,
+
                         #[iterate]
                         add_css_class: ["file-type", "dim-label"],
                         set_halign: gtk::Align::Start,
@@ -122,6 +132,8 @@ impl SimpleComponent for FilePreviewModel {
                         set_halign: gtk::Align::Start,
                     },
                     attach[1, 3, 1, 1]: created = &gtk::Label {
+                        #[watch]
+                        set_text: &model.created_text,
                         add_css_class: "info-value",
                         set_halign: gtk::Align::End,
                     },
@@ -132,6 +144,8 @@ impl SimpleComponent for FilePreviewModel {
                         set_halign: gtk::Align::Start,
                     },
                     attach[1, 4, 1, 1]: modified = &gtk::Label {
+                        #[watch]
+                        set_text: &model.modified_text,
                         add_css_class: "info-value",
                         set_halign: gtk::Align::End,
                     },
@@ -141,7 +155,14 @@ impl SimpleComponent for FilePreviewModel {
     }
 
     fn init(_: (), root: &Self::Root, _sender: ComponentSender<Self>) -> ComponentParts<Self> {
-        let model = FilePreviewModel { file: None };
+        let model = FilePreviewModel {
+            info: vec![],
+            created_text: String::new(),
+            file_name_text: String::new(),
+            file_type_text: String::new(),
+            modified_text: String::new(),
+            preview: None,
+        };
 
         let widgets = view_output!();
 
@@ -161,56 +182,151 @@ impl SimpleComponent for FilePreviewModel {
     fn update(&mut self, msg: FilePreviewMsg, _sender: ComponentSender<Self>) {
         info!("received message: {:?}", msg);
 
-        self.file = match msg {
-            FilePreviewMsg::Hide => None,
-            FilePreviewMsg::NewSelection(selection) => preview_from_selection(selection),
+        let selection = match msg {
+            FilePreviewMsg::Hide => {
+                self.info = vec![];
+                return;
+            }
+            // If the only selected file is a directory, then the preview will be hidden.
+            FilePreviewMsg::NewSelection(selection) if is_single_directory(&selection) => {
+                self.info = vec![];
+                return;
+            }
+            FilePreviewMsg::NewSelection(selection) => selection,
+        };
+
+        let info = selection
+            .files
+            .into_iter()
+            .map(|file| {
+                // TODO: make async?
+                let file_info = file.query_info(
+                    &[
+                        *gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                        *gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+                        *gio::FILE_ATTRIBUTE_STANDARD_ICON,
+                        *gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
+                        *gio::FILE_ATTRIBUTE_STANDARD_SIZE,
+                        *gio::FILE_ATTRIBUTE_TIME_CREATED,
+                        *gio::FILE_ATTRIBUTE_TIME_MODIFIED,
+                    ]
+                    .join(","),
+                    gio::FileQueryInfoFlags::NONE,
+                    gio::Cancellable::NONE,
+                )?;
+
+                let contents = if file
+                    .query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+                    == gio::FileType::Regular
+                {
+                    read_start_of_file(&file).unwrap_or_default()
+                } else {
+                    vec![]
+                };
+
+                Ok(FileInfo {
+                    file,
+                    info: file_info,
+                    contents,
+                })
+            })
+            .collect::<Result<_, glib::Error>>();
+
+        if let Err(e) = &info {
+            warn!("unable to query file info: {}", e);
+        }
+
+        self.info = info.unwrap_or_default();
+        if self.info.is_empty() {
+            return;
+        }
+
+        match &self.info[..] {
+            [] => (),
+            [file] => {
+                self.file_name_text = file.info.display_name().to_string();
+
+                let content_type = file
+                    .info
+                    .content_type()
+                    .unwrap_or_else(|| GString::from("application/octet-stream"));
+
+                let mime = gio::content_type_get_mime_type(&content_type)
+                    .expect("unable to determine mime type")
+                    .parse::<Mime>()
+                    .expect("could not parse guessed mime type");
+
+                info!("identified {} as {}", file.info.display_name(), mime);
+
+                self.file_type_text =
+                    format!("{} — {}", mime, glib::format_size(file.info.size() as u64),);
+
+                self.created_text = file
+                    .info
+                    .creation_date_time()
+                    .as_ref()
+                    .map_or(String::from(MISSING_INFO), format_datetime);
+
+                self.modified_text = file
+                    .info
+                    .modification_date_time()
+                    .as_ref()
+                    .map_or(String::from(MISSING_INFO), format_datetime);
+
+                let preview = match (mime.type_(), mime.subtype()) {
+                    (mime::IMAGE, _) => FilePreview::Image(file.file.clone()),
+                    _ if is_plain_text(&mime) && !file.contents.contains(&b'\0') => {
+                        let language = sourceview::LanguageManager::default()
+                            .guess_language(file.file.path(), Some(&content_type));
+                        FilePreview::Text(String::from_utf8_lossy(&file.contents).into(), language)
+                    }
+                    _ => {
+                        let icon_theme =
+                            gtk::IconTheme::for_display(&gdk::Display::default().unwrap());
+                        FilePreview::Icon(util::icon_for_file(&icon_theme, 128, &file.info))
+                    }
+                };
+
+                info!("new preview: {:?}", preview);
+
+                self.preview = Some(preview);
+            }
+            files => {
+                self.file_name_text = format!("{} Documents", files.len());
+
+                self.file_type_text =
+                    glib::format_size(files.iter().map(|file| file.info.size() as u64).sum())
+                        .to_string();
+            }
         }
     }
 
     fn pre_view(&self, widgets: &mut Self::Widgets) {
-        if let Some(file) = &self.file {
-            widgets.file_name.set_text(&file.display_name);
-            widgets.file_type.set_text(&format!(
-                "{} — {}",
-                file.mime,
-                glib::format_size(file.size),
-            ));
-            widgets.created.set_text(
-                &file
-                    .created
-                    .as_ref()
-                    .map_or(String::from(MISSING_INFO), format_datetime),
-            );
-            widgets.modified.set_text(
-                &file
-                    .modified
-                    .as_ref()
-                    .map_or(String::from(MISSING_INFO), format_datetime),
-            );
+        info!("preview: {:?}", self.preview);
 
-            match &file.preview {
-                FilePreview::Image(file) => {
-                    widgets.picture.set_file(Some(file));
-                    widgets.stack.set_visible_child(&widgets.picture);
-                }
-                FilePreview::Icon(paintable) => {
-                    widgets.image.set_paintable(Some(paintable));
-                    widgets.stack.set_visible_child(&widgets.image);
-                }
-                FilePreview::Text(text) => {
-                    widgets.text.buffer().set_text(text);
-
-                    let buffer = widgets
-                        .text
-                        .buffer()
-                        .downcast::<sourceview::Buffer>()
-                        .expect("sourceview was not backed by sourceview buffer");
-
-                    buffer.set_language(file.language.as_ref());
-
-                    widgets.stack.set_visible_child(&widgets.text_container);
-                }
+        match &self.preview {
+            Some(FilePreview::Image(file)) => {
+                widgets.picture.set_file(Some(file));
+                widgets.stack.set_visible_child(&widgets.picture);
             }
+            Some(FilePreview::Icon(paintable)) => {
+                widgets.image.set_paintable(Some(paintable));
+                widgets.stack.set_visible_child(&widgets.image);
+            }
+            Some(FilePreview::Text(text, language)) => {
+                widgets.text.buffer().set_text(text);
+
+                let buffer = widgets
+                    .text
+                    .buffer()
+                    .downcast::<sourceview::Buffer>()
+                    .expect("sourceview was not backed by sourceview buffer");
+
+                buffer.set_language(language.as_ref());
+
+                widgets.stack.set_visible_child(&widgets.text_container);
+            }
+            None => (),
         }
     }
 }
@@ -224,89 +340,21 @@ pub enum FilePreviewMsg {
     Hide,
 }
 
-fn preview_from_selection(mut selection: FileSelection) -> Option<FileInfo> {
-    if selection.files.len() == 1 {
-        let file = selection.files.pop().unwrap();
-
-        if file.query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+fn is_single_directory(selection: &FileSelection) -> bool {
+    selection.files.len() == 1
+        && selection.files[0].query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
             == gio::FileType::Directory
-        {
-            return None;
-        }
-
-        // TODO: make async?
-        let file_info = match file.query_info(
-            &[
-                *gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
-                *gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
-                *gio::FILE_ATTRIBUTE_STANDARD_ICON,
-                *gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
-                *gio::FILE_ATTRIBUTE_STANDARD_SIZE,
-                *gio::FILE_ATTRIBUTE_TIME_CREATED,
-                *gio::FILE_ATTRIBUTE_TIME_MODIFIED,
-            ]
-            .join(","),
-            gio::FileQueryInfoFlags::NONE,
-            gio::Cancellable::NONE,
-        ) {
-            Ok(info) => info,
-            Err(e) => {
-                warn!("unable to query file info: {}", e);
-                return None;
-            }
-        };
-
-        let content_type = file_info
-            .content_type()
-            .unwrap_or_else(|| GString::from("application/octet-stream"));
-
-        let contents = if file
-            .query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
-            == gio::FileType::Regular
-        {
-            read_start_of_file(&file).unwrap_or_else(|_| glib::Bytes::from_static(&[]))
-        } else {
-            glib::Bytes::from_static(&[])
-        };
-
-        let language =
-            sourceview::LanguageManager::default().guess_language(file.path(), Some(&content_type));
-
-        let mime = gio::content_type_get_mime_type(&content_type)
-            .expect("unable to determine mime type")
-            .parse::<Mime>()
-            .expect("could not parse guessed mime type");
-
-        info!("identified file as {}", mime);
-
-        let preview = match (mime.type_(), mime.subtype()) {
-            (mime::IMAGE, _) => FilePreview::Image(file),
-            _ if is_plain_text(&mime) && !contents.contains(&b'\0') => {
-                FilePreview::Text(String::from_utf8_lossy(&contents).into())
-            }
-            _ => {
-                let icon_theme = gtk::IconTheme::for_display(&gdk::Display::default().unwrap());
-                FilePreview::Icon(util::icon_for_file(&icon_theme, 128, &file_info))
-            }
-        };
-
-        Some(FileInfo {
-            display_name: file_info.display_name().to_string(),
-            language,
-            mime,
-            preview,
-            size: file_info.size() as u64,
-            created: file_info.creation_date_time(),
-            modified: file_info.modification_date_time(),
-        })
-    } else {
-        None
-    }
 }
 
-fn read_start_of_file(file: &gio::File) -> Result<glib::Bytes, glib::Error> {
-    let file = file.read(gio::Cancellable::NONE)?;
-    file.read_bytes(PREVIEW_BUFFER_SIZE, gio::Cancellable::NONE)
+fn read_start_of_file(file: &gio::File) -> Result<Vec<u8>, io::Error> {
+    let mut contents = Vec::with_capacity(PREVIEW_BUFFER_SIZE);
+
+    let reader = file.read(gio::Cancellable::NONE).unwrap().into_read();
+
+    let n = reader.take(PREVIEW_BUFFER_SIZE as u64).read_to_end(&mut contents)?;
+    contents.truncate(n);
+
+    Ok(contents)
 }
 
 /// Returns `true` for mime types that are "reasonably" readable as plain text.
@@ -327,4 +375,14 @@ fn is_plain_text(mime: &Mime) -> bool {
 /// Formats a [`GDateTime`](glib::DateTime) as a human-readable date string.
 fn format_datetime(dt: &glib::DateTime) -> String {
     dt.format("%A, %B %-d, %Y at %-I:%M %p").unwrap().into()
+}
+
+fn format_datetime_range(dts: impl Iterator<Item = glib::DateTime>) -> String {
+    let (min, max) = match dts.minmax() {
+        MinMaxResult::NoElements => panic!("iterator cannot be empty"),
+        MinMaxResult::OneElement(e) => (e.clone(), e),
+        MinMaxResult::MinMax(min, max) => (min, max),
+    };
+
+    return String::new();
 }
