@@ -560,6 +560,10 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &gio::File) -> gio::Menu 
 
     let menu_model = gio::Menu::new();
 
+    let open_section = gio::Menu::new();
+
+    menu_model.append_section(None, &open_section);
+
     if let Some(app_info) =
         gio::AppInfo::default_for_type(&file_info.content_type().unwrap(), false)
     {
@@ -572,21 +576,25 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &gio::File) -> gio::Menu 
             menu_item.set_icon(icon);
         }
 
-        menu_model.append_item(&menu_item);
+        open_section.append_item(&menu_item);
     }
 
-    menu_model.append_item(
+    open_section.append_item(
         &RelmAction::<OpenChooserAction>::to_menu_item_with_target_value("Open with...", &uri),
     );
 
-    menu_model.append_item(
-        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value("Move to Trash", &uri),
-    );
+    let modify_section = gio::Menu::new();
 
-    menu_model.append_item(&RelmAction::<RenameAction>::to_menu_item_with_target_value(
+    menu_model.append_section(None, &modify_section);
+
+    modify_section.append_item(&RelmAction::<RenameAction>::to_menu_item_with_target_value(
         "Rename...",
         &uri,
     ));
+
+    modify_section.append_item(
+        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value("Move to Trash", &uri),
+    );
 
     menu_model.freeze();
 
