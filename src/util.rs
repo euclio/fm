@@ -79,6 +79,19 @@ pub fn fmt_file_as_uri(file: &gio::File, f: &mut fmt::Formatter) -> fmt::Result 
     f.write_str(&file.uri())
 }
 
+/// Returns an object that can be formatted to print a `Debug` representation of a list of GFiles.
+pub fn files_as_uris(files: &[gio::File]) -> impl Debug + '_ {
+    struct Formatter<'a>(&'a [gio::File]);
+
+    impl Debug for Formatter<'_> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            fmt_files_as_uris(self.0, f)
+        }
+    }
+
+    Formatter(files)
+}
+
 /// Format a slice of [`GFile`](gio::File)s as URIs for nicer [`Debug`] output.
 pub fn fmt_files_as_uris(files: &[gio::File], f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_list()

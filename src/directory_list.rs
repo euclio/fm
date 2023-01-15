@@ -4,6 +4,7 @@ use std::cell::RefCell;
 
 use anyhow::bail;
 use educe::Educe;
+use futures::prelude::*;
 use glib::translate::{from_glib_full, IntoGlib};
 use glib::{clone, closure, Object};
 use log::*;
@@ -42,6 +43,21 @@ impl Directory {
     pub fn dir(&self) -> gio::File {
         self.directory_list.file().unwrap()
     }
+
+    /// Returns the file info for the files that are currently selected.
+    ///
+    /// This function does not perform any I/O.
+    fn selected_file_info(&self) -> Vec<gio::FileInfo> {
+        let selected_set = self.list_model.selection();
+        selected_set
+            .iter()
+            .flat_map(|pos| {
+                self.list_model
+                    .item(pos)
+                    .map(|item| item.downcast::<gio::FileInfo>().unwrap())
+            })
+            .collect()
+    }
 }
 
 /// Used to communicate the file selection status to the parent widget.
@@ -68,6 +84,12 @@ pub struct FileSelection {
     pub files: Vec<gio::File>,
 }
 
+#[derive(Debug)]
+pub enum DirectoryMessage {
+    /// Send the files in the current selection to the trash.
+    TrashSelection,
+}
+
 pub struct DirectoryWidgets;
 
 impl FactoryComponent for Directory {
@@ -75,7 +97,7 @@ impl FactoryComponent for Directory {
     type ParentWidget = panel::Paned;
     type Widgets = DirectoryWidgets;
     type Init = gio::File;
-    type Input = ();
+    type Input = DirectoryMessage;
     type Output = AppMsg;
     type Root = gtk::ScrolledWindow;
     type CommandOutput = ();
@@ -204,6 +226,29 @@ impl FactoryComponent for Directory {
         root.set_child(Some(&stack));
 
         DirectoryWidgets
+    }
+
+    fn update(&mut self, msg: Self::Input, _: FactorySender<Self>) {
+        match msg {
+            DirectoryMessage::TrashSelection => {
+                let selected_file_info = self.selected_file_info();
+                let selected_files = selected_file_info
+                    .iter()
+                    .map(|info| self.dir().child(info.name()))
+                    .collect::<Vec<_>>();
+
+                info!("trashing files: {:?}", util::files_as_uris(&selected_files));
+
+                relm4::spawn_local(async move {
+                    future::join_all(
+                        selected_files
+                            .iter()
+                            .map(|f| f.trash_future(glib::source::PRIORITY_DEFAULT)),
+                    )
+                    .await;
+                });
+            }
+        }
     }
 }
 
@@ -428,17 +473,8 @@ fn register_context_actions(
         }),
     ));
 
-    group.add_action(&RelmAction::<TrashFileAction>::new_with_target_value(
-        move |_, uri: String| {
-            let file = gio::File::for_uri(&uri);
-            let parent = file.parent().expect("listed file must have a parent");
-            if let Ok(()) = file.trash(None::<&gio::Cancellable>) {
-                sender.output(AppMsg::NewSelection(Selection::Files(FileSelection {
-                    parent,
-                    files: vec![],
-                })));
-            }
-        },
+    group.add_action(&RelmAction::<TrashSelectionAction>::new_stateless(
+        move |_| sender.input(DirectoryMessage::TrashSelection),
     ));
 
     let actions = group.into_action_group();
@@ -592,9 +628,9 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &gio::File) -> gio::Menu 
         &uri,
     ));
 
-    modify_section.append_item(
-        &RelmAction::<TrashFileAction>::to_menu_item_with_target_value("Move to Trash", &uri),
-    );
+    modify_section.append_item(&RelmAction::<TrashSelectionAction>::to_menu_item(
+        "Move to Trash",
+    ));
 
     menu_model.freeze();
 

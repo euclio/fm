@@ -233,6 +233,7 @@ dependencies = [
  "directories",
  "educe",
  "env_logger",
+ "futures",
  "itertools",
  "log",
  "mime",

@@ -34,12 +34,12 @@ impl ActionName for RenameAction {
     const NAME: &'static str = "rename";
 }
 
-pub struct TrashFileAction;
+pub struct TrashSelectionAction;
 
-impl ActionName for TrashFileAction {
+impl ActionName for TrashSelectionAction {
     type Group = DirectoryListRightClickActionGroup;
-    type Target = String;
+    type Target = ();
     type State = ();
 
-    const NAME: &'static str = "trash-file";
+    const NAME: &'static str = "trash-selection";
 }
