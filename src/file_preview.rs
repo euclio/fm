@@ -383,7 +383,10 @@ fn is_single_directory(selection: &FileSelection) -> bool {
 fn read_start_of_file(file: &gio::File) -> Result<Vec<u8>, io::Error> {
     let mut contents = Vec::with_capacity(PREVIEW_BUFFER_SIZE);
 
-    let reader = file.read(gio::Cancellable::NONE).unwrap().into_read();
+    let reader = file
+        .read(gio::Cancellable::NONE)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+        .into_read();
 
     let n = reader
         .take(PREVIEW_BUFFER_SIZE as u64)
