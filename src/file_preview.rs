@@ -79,10 +79,14 @@ impl SimpleComponent for FilePreviewModel {
                     add_css_class: "file-preview",
                     set_vhomogeneous: false,
 
-                    #[name = "image"]
-                    gtk::Image {
-                        set_hexpand: true,
-                        set_icon_size: gtk::IconSize::Large,
+                    #[name = "icon"]
+                    adw::Clamp {
+                        set_maximum_size: 256,
+
+                        #[name = "icon_picture"]
+                        gtk::Picture {
+                            set_hexpand: true,
+                        },
                     },
 
                     #[name = "picture"]
@@ -290,7 +294,7 @@ impl SimpleComponent for FilePreviewModel {
                     _ => {
                         let icon_theme =
                             gtk::IconTheme::for_display(&gdk::Display::default().unwrap());
-                        FilePreview::Icon(util::icon_for_file(&icon_theme, 128, &file.info))
+                        FilePreview::Icon(util::icon_for_file(&icon_theme, 512, &file.info))
                     }
                 };
 
@@ -340,8 +344,8 @@ impl SimpleComponent for FilePreviewModel {
                 widgets.stack.set_visible_child(&widgets.picture);
             }
             Some(FilePreview::Icon(paintable)) => {
-                widgets.image.set_paintable(Some(paintable));
-                widgets.stack.set_visible_child(&widgets.image);
+                widgets.icon_picture.set_paintable(Some(paintable));
+                widgets.stack.set_visible_child(&widgets.icon);
             }
             Some(FilePreview::Text(text, language)) => {
                 widgets.text.buffer().set_text(text);
