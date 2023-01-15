@@ -89,6 +89,9 @@ pub struct FileSelection {
 pub enum DirectoryMessage {
     /// Send the files in the current selection to the trash.
     TrashSelection,
+
+    /// Restore files in the current selection from the trash.
+    RestoreSelectionFromTrash,
 }
 
 pub struct DirectoryWidgets;
@@ -267,6 +270,44 @@ impl FactoryComponent for Directory {
                             _ => format!("{} files moved to trash", trashed_files.len()),
                         }));
                     }
+                });
+            }
+            DirectoryMessage::RestoreSelectionFromTrash => {
+                let selected_file_info = self.selected_file_info();
+                let selected_files = selected_file_info
+                    .iter()
+                    .map(|info| self.dir().child(info.name()))
+                    .collect::<Vec<_>>();
+
+                info!(
+                    "restoring files: {:?}",
+                    util::files_as_uris(&selected_files)
+                );
+
+                relm4::spawn_local(async move {
+                    future::join_all(selected_files.iter().map(|f| async {
+                        let info = f
+                            .query_info_future(
+                                &gio::FILE_ATTRIBUTE_TRASH_ORIG_PATH,
+                                gio::FileQueryInfoFlags::empty(),
+                                glib::source::PRIORITY_DEFAULT,
+                            )
+                            .await;
+
+                        let original_path = info?
+                            .attribute_byte_string(&gio::FILE_ATTRIBUTE_TRASH_ORIG_PATH)
+                            .unwrap();
+                        let original_path = gio::File::for_parse_name(&original_path);
+
+                        let (res, _) = f.move_future(
+                            &original_path,
+                            gio::FileCopyFlags::empty(),
+                            glib::source::PRIORITY_DEFAULT,
+                        );
+
+                        res.await
+                    }))
+                    .await;
                 });
             }
         }
@@ -494,9 +535,16 @@ fn register_context_actions(
         }),
     ));
 
+    let sender_ = sender.clone();
     group.add_action(&RelmAction::<TrashSelectionAction>::new_stateless(
-        move |_| sender.input(DirectoryMessage::TrashSelection),
+        move |_| sender_.input(DirectoryMessage::TrashSelection),
     ));
+
+    group.add_action(
+        &RelmAction::<RestoreSelectionFromTrashAction>::new_stateless(move |_| {
+            sender.input(DirectoryMessage::RestoreSelectionFromTrash)
+        }),
+    );
 
     let actions = group.into_action_group();
     list_item_view.insert_action_group(
@@ -649,9 +697,15 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &gio::File) -> gio::Menu 
         &uri,
     ));
 
-    modify_section.append_item(&RelmAction::<TrashSelectionAction>::to_menu_item(
-        "Move to Trash",
-    ));
+    if !dir.has_uri_scheme("trash") {
+        modify_section.append_item(&RelmAction::<TrashSelectionAction>::to_menu_item(
+            "Move to Trash",
+        ));
+    } else {
+        modify_section.append_item(
+            &RelmAction::<RestoreSelectionFromTrashAction>::to_menu_item("Restore from Trash"),
+        );
+    }
 
     menu_model.freeze();
 

@@ -43,3 +43,13 @@ impl ActionName for TrashSelectionAction {
 
     const NAME: &'static str = "trash-selection";
 }
+
+pub struct RestoreSelectionFromTrashAction;
+
+impl ActionName for RestoreSelectionFromTrashAction {
+    type Group = DirectoryListRightClickActionGroup;
+    type Target = ();
+    type State = ();
+
+    const NAME: &'static str = "restore-selection-from-trash";
+}
