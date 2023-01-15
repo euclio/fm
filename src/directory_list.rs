@@ -1,6 +1,7 @@
 //! Factory widget that displays a listing of the contents of a directory.
 
 use std::cell::RefCell;
+use std::iter;
 
 use anyhow::bail;
 use educe::Educe;
@@ -228,7 +229,7 @@ impl FactoryComponent for Directory {
         DirectoryWidgets
     }
 
-    fn update(&mut self, msg: Self::Input, _: FactorySender<Self>) {
+    fn update(&mut self, msg: Self::Input, sender: FactorySender<Self>) {
         match msg {
             DirectoryMessage::TrashSelection => {
                 let selected_file_info = self.selected_file_info();
@@ -240,12 +241,32 @@ impl FactoryComponent for Directory {
                 info!("trashing files: {:?}", util::files_as_uris(&selected_files));
 
                 relm4::spawn_local(async move {
-                    future::join_all(
+                    let results = future::join_all(
                         selected_files
                             .iter()
                             .map(|f| f.trash_future(glib::source::PRIORITY_DEFAULT)),
                     )
                     .await;
+
+                    let trashed_files =
+                        iter::zip(results, iter::zip(selected_files, selected_file_info))
+                            .flat_map(
+                                |(result, info)| {
+                                    if result.is_ok() {
+                                        Some(info)
+                                    } else {
+                                        None
+                                    }
+                                },
+                            )
+                            .collect::<Vec<_>>();
+
+                    if !trashed_files.is_empty() {
+                        sender.output(AppMsg::Toast(match &trashed_files[..] {
+                            [(_, info)] => format!("'{}' moved to trash", info.display_name()),
+                            _ => format!("{} files moved to trash", trashed_files.len()),
+                        }));
+                    }
                 });
             }
         }

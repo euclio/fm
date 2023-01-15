@@ -88,6 +88,9 @@ pub enum AppMsg {
     /// Trigger the application chooser to pick an application to open the given file.
     ChooseAndLaunchApp(gio::File),
 
+    /// Display a toast.
+    Toast(String),
+
     /// Display the about window.
     About,
 
@@ -96,11 +99,12 @@ pub enum AppMsg {
 }
 
 #[relm4::component(pub)]
-impl SimpleComponent for AppModel {
+impl Component for AppModel {
     type Widgets = AppWidgets;
     type Init = PathBuf;
     type Input = AppMsg;
     type Output = ();
+    type CommandOutput = ();
 
     view! {
         #[name = "main_window"]
@@ -108,38 +112,41 @@ impl SimpleComponent for AppModel {
             set_default_size: (state.width, state.height),
             set_title: Some("fm"),
 
-            gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
+            #[name = "toast_overlay"]
+            adw::ToastOverlay {
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
 
-                adw::HeaderBar {
-                    pack_end = &gtk::MenuButton {
-                        set_icon_name: "open-menu-symbolic",
-                        set_menu_model: Some(&primary_menu),
-                    },
-                },
-
-                adw::Flap {
-                    #[wrap(Some)]
-                    set_flap = &gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        append: places_sidebar.widget(),
+                    adw::HeaderBar {
+                        pack_end = &gtk::MenuButton {
+                            set_icon_name: "open-menu-symbolic",
+                            set_menu_model: Some(&primary_menu),
+                        },
                     },
 
-                    #[wrap(Some)]
-                    set_separator = &gtk::Separator {},
+                    adw::Flap {
+                        #[wrap(Some)]
+                        set_flap = &gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            append: places_sidebar.widget(),
+                        },
 
-                    #[wrap(Some)]
-                    set_content = &gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
+                        #[wrap(Some)]
+                        set_separator = &gtk::Separator {},
 
-                        #[name = "directory_panes_scroller"]
-                        gtk::ScrolledWindow {
-                            set_hexpand: true,
-                            set_vexpand: true,
+                        #[wrap(Some)]
+                        set_content = &gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
 
-                            #[name = "directory_panes"]
-                            panel::Paned {
-                                append: file_preview.widget(),
+                            #[name = "directory_panes_scroller"]
+                            gtk::ScrolledWindow {
+                                set_hexpand: true,
+                                set_vexpand: true,
+
+                                #[name = "directory_panes"]
+                                panel::Paned {
+                                    append: file_preview.widget(),
+                                },
                             },
                         },
                     },
@@ -258,7 +265,13 @@ impl SimpleComponent for AppModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        msg: Self::Input,
+        _sender: ComponentSender<Self>,
+        _: &Self::Root,
+    ) {
         self.open_app_for_file = None;
         self.update_directory_scroll_position = false;
 
@@ -347,6 +360,9 @@ impl SimpleComponent for AppModel {
                 self.update_directory_scroll_position = true;
             }
             AppMsg::ChooseAndLaunchApp(file) => self.open_app_for_file = Some(file),
+            AppMsg::Toast(message) => {
+                widgets.toast_overlay.add_toast(&adw::Toast::new(&message));
+            }
             AppMsg::About => {
                 gtk::AboutDialog::builder()
                     .authors(
