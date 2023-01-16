@@ -8,7 +8,7 @@ use itertools::{Itertools, MinMaxResult};
 use log::*;
 use mime::Mime;
 use relm4::gtk::prelude::*;
-use relm4::{adw, gtk, ComponentParts, ComponentSender, SimpleComponent};
+use relm4::prelude::*;
 use sourceview::{prelude::*, Language};
 use sourceview5 as sourceview;
 
@@ -57,12 +57,19 @@ pub struct FilePreviewModel {
     modified_text: String,
 }
 
+#[derive(Debug)]
+pub enum FilePreviewCommand {
+    /// A texture has finished loading.
+    TextureLoaded(gio::File, Result<gdk::Texture, glib::Error>),
+}
+
 #[relm4::component(pub)]
-impl SimpleComponent for FilePreviewModel {
+impl Component for FilePreviewModel {
     type Widgets = FilePreviewWidgets;
     type Init = ();
     type Input = FilePreviewMsg;
     type Output = ();
+    type CommandOutput = FilePreviewCommand;
 
     view! {
         adw::Clamp {
@@ -78,6 +85,9 @@ impl SimpleComponent for FilePreviewModel {
                 gtk::Stack {
                     add_css_class: "file-preview",
                     set_vhomogeneous: false,
+
+                    #[name = "spinner"]
+                    gtk::Spinner {},
 
                     #[name = "icon"]
                     adw::Clamp {
@@ -189,7 +199,13 @@ impl SimpleComponent for FilePreviewModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: FilePreviewMsg, _sender: ComponentSender<Self>) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        msg: FilePreviewMsg,
+        sender: ComponentSender<Self>,
+        _: &Self::Root,
+    ) {
         info!("received message: {:?}", msg);
 
         let selection = match msg {
@@ -285,7 +301,20 @@ impl SimpleComponent for FilePreviewModel {
                     .map_or(String::from(MISSING_INFO), format_datetime);
 
                 let preview = match (mime.type_(), mime.subtype()) {
-                    (mime::IMAGE, _) => FilePreview::Image(file.file.clone()),
+                    (mime::IMAGE, _) => {
+                        let gfile = file.file.clone();
+
+                        // Texture loading can be expensive and may block the UI thread.
+                        widgets.spinner.start();
+                        widgets.stack.set_visible_child(&widgets.spinner);
+                        sender.oneshot_command(async move {
+                            let texture_result = gdk::Texture::from_file(&gfile);
+
+                            FilePreviewCommand::TextureLoaded(gfile, texture_result)
+                        });
+
+                        FilePreview::Image(file.file.clone())
+                    }
                     _ if is_plain_text(&mime) && !file.contents.contains(&b'\0') => {
                         let language = sourceview::LanguageManager::default()
                             .guess_language(file.file.path(), Some(&content_type));
@@ -333,16 +362,30 @@ impl SimpleComponent for FilePreviewModel {
                 self.preview = Some(FilePreview::Icon(icon_paintable));
             }
         }
+
+        self.update_view(widgets, sender);
+    }
+
+    fn update_cmd_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::CommandOutput,
+        _: ComponentSender<Self>,
+        _: &Self::Root,
+    ) {
+        if let FilePreviewCommand::TextureLoaded(file, Ok(texture)) = message {
+            if matches!(&self.preview, Some(FilePreview::Image(f)) if *f == file) {
+                widgets.picture.set_paintable(Some(&texture));
+                widgets.stack.set_visible_child(&widgets.picture);
+            }
+        }
     }
 
     fn pre_view(&self, widgets: &mut Self::Widgets) {
         info!("preview: {:?}", self.preview);
 
         match &self.preview {
-            Some(FilePreview::Image(file)) => {
-                widgets.picture.set_file(Some(file));
-                widgets.stack.set_visible_child(&widgets.picture);
-            }
+            Some(FilePreview::Image(_)) => (),
             Some(FilePreview::Icon(paintable)) => {
                 widgets.icon_picture.set_paintable(Some(paintable));
                 widgets.stack.set_visible_child(&widgets.icon);
