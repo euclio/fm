@@ -1,6 +1,7 @@
 //! Factory widget that displays a listing of the contents of a directory.
 
 use std::cell::RefCell;
+use std::fmt::{self, Debug};
 use std::iter;
 
 use anyhow::bail;
@@ -14,7 +15,7 @@ use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
 use relm4::{gtk, panel};
 
-use crate::util::{self, BitsetExt};
+use crate::util::{self, fmt_files_as_uris, BitsetExt, GFileInfoExt};
 use crate::AppMsg;
 
 mod actions;
@@ -160,14 +161,12 @@ impl FactoryComponent for Directory {
     ) -> Self::Widgets {
         let factory = gtk::SignalListItemFactory::new();
 
-        let dir = self.dir();
         factory.connect_setup(clone!(
-            @strong dir,
             @strong sender as sender,
             @weak self.list_model as selection,
         => move |_, item| {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-            build_list_item_view(dir.clone(), &selection, item, &sender);
+            build_list_item_view(&selection, item, &sender);
         }));
 
         let sender_ = sender.clone();
@@ -186,20 +185,18 @@ impl FactoryComponent for Directory {
             .model(&self.list_model)
             .build();
 
-        let dir = self.dir();
         list_view.connect_activate(clone!(
-            @strong dir,
             @strong sender as sender,
             @weak self.list_model as list_model,
         => move |_, position| {
             if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
                 let info = item.downcast_ref::<gio::FileInfo>().unwrap();
-                let file = dir.child(info.name());
+                let file = info.file().unwrap();
                 open_application_for_file(&file, &sender);
             }
         }));
 
-        let drop_target = new_drop_target_for_dir(dir, sender);
+        let drop_target = new_drop_target_for_dir(self.dir(), sender);
         list_view.add_controller(&drop_target);
 
         let stack = gtk::Stack::builder().vhomogeneous(false).build();
@@ -236,37 +233,32 @@ impl FactoryComponent for Directory {
         match msg {
             DirectoryMessage::TrashSelection => {
                 let selected_file_info = self.selected_file_info();
-                let selected_files = selected_file_info
-                    .iter()
-                    .map(|info| self.dir().child(info.name()))
-                    .collect::<Vec<_>>();
 
-                info!("trashing files: {:?}", util::files_as_uris(&selected_files));
+                info!("trashing files: {:?}", fmt_file_info(&selected_file_info));
 
                 relm4::spawn_local(async move {
-                    let results = future::join_all(
-                        selected_files
-                            .iter()
-                            .map(|f| f.trash_future(glib::source::PRIORITY_DEFAULT)),
-                    )
+                    let results = future::join_all(selected_file_info.iter().map(|f| {
+                        f.file()
+                            .unwrap()
+                            .trash_future(glib::source::PRIORITY_DEFAULT)
+                    }))
                     .await;
 
-                    let trashed_files =
-                        iter::zip(results, iter::zip(selected_files, selected_file_info))
-                            .flat_map(
-                                |(result, info)| {
-                                    if result.is_ok() {
-                                        Some(info)
-                                    } else {
-                                        None
-                                    }
-                                },
-                            )
-                            .collect::<Vec<_>>();
+                    let trashed_files = iter::zip(results, selected_file_info)
+                        .flat_map(
+                            |(result, info)| {
+                                if result.is_ok() {
+                                    Some(info)
+                                } else {
+                                    None
+                                }
+                            },
+                        )
+                        .collect::<Vec<_>>();
 
                     if !trashed_files.is_empty() {
                         sender.output(AppMsg::Toast(match &trashed_files[..] {
-                            [(_, info)] => format!("'{}' moved to trash", info.display_name()),
+                            [info] => format!("'{}' moved to trash", info.display_name()),
                             _ => format!("{} files moved to trash", trashed_files.len()),
                         }));
                     }
@@ -274,19 +266,14 @@ impl FactoryComponent for Directory {
             }
             DirectoryMessage::RestoreSelectionFromTrash => {
                 let selected_file_info = self.selected_file_info();
-                let selected_files = selected_file_info
-                    .iter()
-                    .map(|info| self.dir().child(info.name()))
-                    .collect::<Vec<_>>();
 
-                info!(
-                    "restoring files: {:?}",
-                    util::files_as_uris(&selected_files)
-                );
+                info!("restoring files: {:?}", fmt_file_info(&selected_file_info));
 
                 relm4::spawn_local(async move {
-                    future::join_all(selected_files.iter().map(|f| async {
-                        let info = f
+                    future::join_all(selected_file_info.iter().map(|info| async {
+                        let file = info.file().unwrap();
+
+                        let info = file
                             .query_info_future(
                                 &gio::FILE_ATTRIBUTE_TRASH_ORIG_PATH,
                                 gio::FileQueryInfoFlags::empty(),
@@ -299,7 +286,7 @@ impl FactoryComponent for Directory {
                             .unwrap();
                         let original_path = gio::File::for_parse_name(&original_path);
 
-                        let (res, _) = f.move_future(
+                        let (res, _) = file.move_future(
                             &original_path,
                             gio::FileCopyFlags::empty(),
                             glib::source::PRIORITY_DEFAULT,
@@ -319,7 +306,6 @@ impl FactoryComponent for Directory {
 /// This view displays an icon, the name of the file, and an arrow indicating if the item is a file
 /// or directory.
 fn build_list_item_view(
-    dir: gio::File,
     selection: &gtk::MultiSelection,
     list_item: &gtk::ListItem,
     sender: &FactorySender<Directory>,
@@ -387,9 +373,9 @@ fn build_list_item_view(
         .button(BUTTON_RIGHT_CLICK)
         .build();
     click_controller.connect_pressed(
-        clone!(@strong dir, @weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
+        clone!(@weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
             let target = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
-            handle_right_click(&dir, &selection, &list_item, menu, target);
+            handle_right_click(&selection, &list_item, menu, target);
         }),
     );
     root.add_controller(&click_controller);
@@ -407,7 +393,7 @@ fn build_list_item_view(
             |_: Option<Object>, item: Option<Object>| {
                 item.map(|item| {
                     let file_info = item.downcast_ref::<gio::FileInfo>().unwrap();
-                    let file = dir.child(file_info.name());
+                    let file = file_info.file().unwrap();
 
                     // Dip into FFI here since the Rust bindings don't currently provide a way to
                     // construct the content provider from a GFile.
@@ -618,10 +604,9 @@ fn send_new_selection(selection: &gtk::MultiSelection, sender: &FactorySender<Di
         let files = selected_set
             .iter()
             .flat_map(|pos| {
-                selection.item(pos).map(|item| {
-                    let file_info = item.downcast::<gio::FileInfo>().unwrap();
-                    dir.child(file_info.name())
-                })
+                selection
+                    .item(pos)
+                    .map(|item| item.downcast::<gio::FileInfo>().unwrap().file().unwrap())
             })
             .collect();
 
@@ -633,7 +618,6 @@ fn send_new_selection(selection: &gtk::MultiSelection, sender: &FactorySender<Di
 
 /// Handles the right click operation on an individual list item.
 fn handle_right_click(
-    dir: &gio::File,
     selection: &gtk::MultiSelection,
     list_item: &gtk::ListItem,
     menu: gtk::PopoverMenu,
@@ -649,7 +633,7 @@ fn handle_right_click(
     if let Some(item) = list_item.item() {
         let info = item.downcast_ref::<gio::FileInfo>().unwrap();
 
-        let menu_model = populate_menu_model(info, dir);
+        let menu_model = populate_menu_model(info);
 
         menu.set_menu_model(Some(&menu_model));
         menu.set_pointing_to(Some(&target));
@@ -659,8 +643,8 @@ fn handle_right_click(
 
 /// Constructs a new menu model for the given file info. Used to dynamically populate the menu on
 /// right click.
-fn populate_menu_model(file_info: &gio::FileInfo, dir: &gio::File) -> gio::Menu {
-    let file = dir.child(file_info.name());
+fn populate_menu_model(file_info: &gio::FileInfo) -> gio::Menu {
+    let file = file_info.file().unwrap();
     let uri = file.uri().to_string();
 
     let menu_model = gio::Menu::new();
@@ -697,7 +681,7 @@ fn populate_menu_model(file_info: &gio::FileInfo, dir: &gio::File) -> gio::Menu 
         &uri,
     ));
 
-    if !dir.has_uri_scheme("trash") {
+    if !file.has_uri_scheme("trash") {
         modify_section.append_item(&RelmAction::<TrashSelectionAction>::to_menu_item(
             "Move to Trash",
         ));
@@ -735,4 +719,19 @@ fn file_sorter() -> gtk::Sorter {
             .into()
     })
     .upcast()
+}
+
+/// Returns a formattable object for a list of [`gio::FileInfo`] objects. Used to log the return
+/// value of [`Directory::selected_file_info`].
+fn fmt_file_info(info: &[gio::FileInfo]) -> impl Debug + '_ {
+    struct Formatter<'a>(&'a [gio::FileInfo]);
+
+    impl Debug for Formatter<'_> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let files = self.0.iter().map(|i| i.file().unwrap()).collect::<Vec<_>>();
+            fmt_files_as_uris(&files, f)
+        }
+    }
+
+    Formatter(info)
 }
