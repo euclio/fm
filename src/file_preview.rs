@@ -211,11 +211,13 @@ impl Component for FilePreviewModel {
         let selection = match msg {
             FilePreviewMsg::Hide => {
                 self.info = vec![];
+                self.update_view(widgets, sender);
                 return;
             }
             // If the only selected file is a directory, then the preview will be hidden.
             FilePreviewMsg::NewSelection(selection) if is_single_directory(&selection) => {
                 self.info = vec![];
+                self.update_view(widgets, sender);
                 return;
             }
             FilePreviewMsg::NewSelection(selection) => selection,
