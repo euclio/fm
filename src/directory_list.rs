@@ -88,6 +88,8 @@ pub struct FileSelection {
 
 #[derive(Debug)]
 pub enum DirectoryMessage {
+    OpenItemAtPosition(u32),
+
     /// Send the files in the current selection to the trash.
     TrashSelection,
 
@@ -95,8 +97,7 @@ pub enum DirectoryMessage {
     RestoreSelectionFromTrash,
 }
 
-pub struct DirectoryWidgets;
-
+#[relm4::factory(pub)]
 impl FactoryComponent for Directory {
     type ParentInput = AppMsg;
     type ParentWidget = panel::Paned;
@@ -104,21 +105,39 @@ impl FactoryComponent for Directory {
     type Init = gio::File;
     type Input = DirectoryMessage;
     type Output = AppMsg;
-    type Root = gtk::ScrolledWindow;
     type CommandOutput = ();
+
+    view! {
+        gtk::ScrolledWindow {
+            set_width_request: WIDTH,
+            set_hscrollbar_policy: gtk::PolicyType::Never,
+
+            #[name = "stack"]
+            gtk::Stack {
+                set_vhomogeneous: false,
+
+                add_child = &gtk::Spinner {
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
+                    set_spinning: true,
+                } -> { set_name: "spinner" },
+
+                #[name = "list_view"]
+                add_child = &gtk::ListView {
+                    set_factory: Some(&factory),
+                    set_model: Some(&self.list_model),
+
+                    connect_activate[sender] => move |_, position| {
+                        sender.input(DirectoryMessage::OpenItemAtPosition(position))
+                    }
+
+                } -> { set_name: "listing" },
+            }
+        }
+    }
 
     fn output_to_parent_input(output: Self::Output) -> Option<AppMsg> {
         Some(output)
-    }
-
-    fn init_root(&self) -> Self::Root {
-        relm4::view! {
-            root = gtk::ScrolledWindow {
-                set_width_request: WIDTH,
-                set_hscrollbar_policy: gtk::PolicyType::Never,
-            }
-        }
-        root
     }
 
     fn init_model(dir: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
@@ -180,57 +199,31 @@ impl FactoryComponent for Directory {
                 send_new_selection(selection, &sender_);
             });
 
-        let list_view = gtk::ListView::builder()
-            .factory(&factory)
-            .model(&self.list_model)
-            .build();
-
-        list_view.connect_activate(clone!(
-            @strong sender as sender,
-            @weak self.list_model as list_model,
-        => move |_, position| {
-            if let Some(item) = list_model.upcast_ref::<gio::ListModel>().item(position) {
-                let info = item.downcast_ref::<gio::FileInfo>().unwrap();
-                let file = info.file().unwrap();
-                open_application_for_file(&file, &sender);
-            }
-        }));
-
-        let drop_target = new_drop_target_for_dir(self.dir(), sender);
-        list_view.add_controller(&drop_target);
-
-        let stack = gtk::Stack::builder().vhomogeneous(false).build();
-
-        let spinner_page = stack.add_child(
-            &gtk::Spinner::builder()
-                .halign(gtk::Align::Center)
-                .valign(gtk::Align::Center)
-                .spinning(true)
-                .build(),
-        );
-        spinner_page.set_name("spinner");
-
-        let listing_page = stack.add_child(&list_view);
-        listing_page.set_name("listing");
+        let widgets = view_output!();
 
         self.directory_list
-            .property_expression("loading")
-            .chain_closure::<String>(closure!(|_: Option<Object>, loading: bool| {
-                if loading {
-                    String::from("spinner")
-                } else {
-                    String::from("listing")
-                }
-            }))
-            .bind(&stack, "visible-child-name", gtk::Widget::NONE);
+            .bind_property("loading", &widgets.stack, "visible-child-name")
+            .transform_to(|_, loading| Some(if loading { "spinner" } else { "listing" }))
+            .sync_create()
+            .build();
 
-        root.set_child(Some(&stack));
+        let drop_target = new_drop_target_for_dir(self.dir(), sender);
+        widgets.list_view.add_controller(&drop_target);
 
-        DirectoryWidgets
+        widgets
     }
 
     fn update(&mut self, msg: Self::Input, sender: FactorySender<Self>) {
         match msg {
+            DirectoryMessage::OpenItemAtPosition(pos) => {
+                let item = self.directory_list.item(pos).unwrap();
+                let file = item
+                    .downcast_ref::<gio::FileInfo>()
+                    .unwrap()
+                    .file()
+                    .unwrap();
+                open_application_for_file(&file, &sender);
+            }
             DirectoryMessage::TrashSelection => {
                 let selected_file_info = self.selected_file_info();
 
