@@ -7,13 +7,13 @@ use std::iter;
 use anyhow::bail;
 use educe::Educe;
 use futures::prelude::*;
+use glib::clone;
 use glib::translate::{from_glib_full, IntoGlib};
-use glib::{clone, closure, Object};
 use log::*;
 use relm4::actions::{ActionGroupName, RelmAction, RelmActionGroup};
 use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
-use relm4::{gtk, panel};
+use relm4::{gtk, panel, view};
 
 use crate::util::{self, fmt_files_as_uris, BitsetExt, GFileInfoExt};
 use crate::AppMsg;
@@ -303,64 +303,81 @@ fn build_list_item_view(
     list_item: &gtk::ListItem,
     sender: &FactorySender<Directory>,
 ) {
-    let root = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .hexpand(true)
-        .spacing(SPACING)
-        .build();
+    view! {
+        #[name = "root"]
+        gtk::Box {
+            set_orientation: gtk::Orientation::Horizontal,
+            set_hexpand: true,
+            set_spacing: SPACING,
 
-    let file_info_expression = list_item.property_expression("item");
+            #[name = "icon"]
+            gtk::Image {},
 
-    let icon_image = gtk::Image::new();
-    root.append(&icon_image);
-    file_info_expression
-        .chain_closure::<gdk::Paintable>(closure!(|_: Option<Object>, item: Option<Object>| {
-            item.map(|item| {
-                let file_info = item.downcast::<gio::FileInfo>().unwrap();
+            #[name = "file_name"]
+            gtk::Label {
+                set_ellipsize: pango::EllipsizeMode::Middle,
+            },
 
+            #[name = "directory_icon"]
+            gtk::Image {
+                set_halign: gtk::Align::End,
+                set_hexpand: true,
+            },
+
+            #[name = "menu"]
+            gtk::PopoverMenu::from_model(gio::MenuModel::NONE) {
+                set_has_arrow: false,
+            },
+
+            #[name = "rename_popover"]
+            gtk::Popover {
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+
+                    #[name = "entry"]
+                    gtk::Entry {},
+
+                    gtk::Button {
+                        set_label: "Rename",
+                        add_css_class: "suggested-action",
+                        connect_clicked[entry] => move |_| {
+                            entry.emit_activate();
+                        }
+                    }
+                }
+            },
+        }
+    }
+
+    list_item
+        .bind_property("item", &icon, "paintable")
+        .transform_to(|_, item: Option<gio::FileInfo>| {
+            item.map(|info| {
                 // FIXME: How inefficient is it to query this every time?
                 let icon_theme = gtk::IconTheme::for_display(&gdk::Display::default().unwrap());
 
-                util::icon_for_file(&icon_theme, 16, &file_info)
+                util::icon_for_file(&icon_theme, 16, &info)
             })
-        }))
-        .bind(&icon_image, "paintable", gtk::Widget::NONE);
-
-    let file_name_label = gtk::Label::builder()
-        .ellipsize(pango::EllipsizeMode::Middle)
+        })
         .build();
-    root.append(&file_name_label);
-    file_info_expression
-        .chain_closure::<glib::GString>(closure!(|_: Option<Object>, item: Option<Object>| {
-            item.map(|item| {
-                let file_info = item.downcast::<gio::FileInfo>().unwrap();
-                file_info.display_name()
-            })
-        }))
-        .bind(&file_name_label, "label", gtk::Widget::NONE);
 
-    let directory_icon = gtk::Image::builder()
-        .halign(gtk::Align::End)
-        .hexpand(true)
+    list_item
+        .bind_property("item", &file_name, "label")
+        .transform_to(|_, item: Option<gio::FileInfo>| item.map(|info| info.display_name()))
         .build();
-    root.append(&directory_icon);
-    file_info_expression
-        .chain_closure::<gio::Icon>(closure!(|_: Option<Object>, item: Option<Object>| {
-            item.and_then(|item| {
-                let file_info = item.downcast::<gio::FileInfo>().unwrap();
-                match file_info.file_type() {
-                    gio::FileType::Directory => {
-                        Some(gio::Icon::for_string("go-next-symbolic").unwrap())
-                    }
-                    _ => None,
+
+    list_item
+        .bind_property("item", &directory_icon, "gicon")
+        .transform_to(|_, item: Option<gio::FileInfo>| {
+            item.and_then(|info| match info.file_type() {
+                gio::FileType::Directory => {
+                    Some(gio::Icon::for_string("go-next-symbolic").unwrap())
                 }
+                _ => None,
             })
-        }))
-        .bind(&directory_icon, "gicon", gtk::Widget::NONE);
-
-    let menu = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
-    menu.set_parent(&root);
-    menu.set_has_arrow(false);
+        })
+        .build();
 
     let click_controller = gtk::GestureClick::builder()
         .button(BUTTON_RIGHT_CLICK)
@@ -380,60 +397,31 @@ fn build_list_item_view(
     // TODO: The documentation seems pretty adamant that you need to listen to `drag-end` if you're
     // supporting `DragAction::MOVE`, but everything seems to work as expected if you don't, at
     // least with Nautilus...
+    list_item
+        .bind_property("item", &drag_source_controller, "content")
+        .transform_to(|_, item: Option<gio::FileInfo>| {
+            item.map(|item| {
+                let file_info = item.downcast_ref::<gio::FileInfo>().unwrap();
+                let file = file_info.file().unwrap();
 
-    file_info_expression
-        .chain_closure::<gdk::ContentProvider>(closure!(
-            |_: Option<Object>, item: Option<Object>| {
-                item.map(|item| {
-                    let file_info = item.downcast_ref::<gio::FileInfo>().unwrap();
-                    let file = file_info.file().unwrap();
+                // Dip into FFI here since the Rust bindings don't currently provide a way to
+                // construct the content provider from a GFile.
+                let content_provider: gdk::ContentProvider = unsafe {
+                    from_glib_full(gdk::ffi::gdk_content_provider_new_typed(
+                        gio::File::static_type().into_glib(),
+                        file,
+                    ))
+                };
 
-                    // Dip into FFI here since the Rust bindings don't currently provide a way to
-                    // construct the content provider from a GFile.
-                    let content_provider: gdk::ContentProvider = unsafe {
-                        from_glib_full(gdk::ffi::gdk_content_provider_new_typed(
-                            gio::File::static_type().into_glib(),
-                            file,
-                        ))
-                    };
-
-                    content_provider
-                })
-            }
-        ))
-        .bind(&drag_source_controller, "content", gtk::Widget::NONE);
-
+                content_provider
+            })
+        })
+        .build();
     root.add_controller(&drag_source_controller);
 
-    let rename_popover = build_rename_popover(root.upcast_ref());
     register_context_actions(root.upcast_ref(), &rename_popover, sender.clone());
 
     list_item.set_child(Some(&root));
-}
-
-/// Construct the popover that is displayed when renaming an item.
-fn build_rename_popover(parent: &gtk::Widget) -> gtk::Popover {
-    let popover = gtk::Popover::new();
-
-    let root = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-
-    let entry = gtk::Entry::new();
-    root.append(&entry);
-
-    let button = gtk::Button::builder()
-        .label("Rename")
-        .css_classes(vec![String::from("suggested-action")])
-        .build();
-    button.connect_clicked(clone!(@weak entry => move |_| {
-        entry.emit_activate();
-    }));
-
-    root.append(&button);
-
-    popover.set_child(Some(&root));
-    popover.set_parent(parent);
-
-    popover
 }
 
 /// Register right-click context menu actions and handlers.
