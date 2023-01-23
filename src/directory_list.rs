@@ -201,6 +201,38 @@ impl FactoryComponent for Directory {
 
         let widgets = view_output!();
 
+        let click_controller = gtk::GestureClick::builder()
+            .button(BUTTON_RIGHT_CLICK)
+            .build();
+        let dir = self.dir();
+        click_controller.connect_pressed(
+            clone!(@strong dir, @weak list_view => move |_, _, x, y| {
+                let model = populate_directory_menu_model();
+
+                menu.set_menu_model(Some(&model));
+                menu.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+                menu.popup();
+            }),
+        );
+        list_view.add_controller(&click_controller);
+
+        let drop_target = new_drop_target_for_dir(self.dir(), sender.clone());
+        list_view.add_controller(&drop_target);
+
+        let stack = gtk::Stack::builder().vhomogeneous(false).build();
+
+        let spinner_page = stack.add_child(
+            &gtk::Spinner::builder()
+                .halign(gtk::Align::Center)
+                .valign(gtk::Align::Center)
+                .spinning(true)
+                .build(),
+        );
+        spinner_page.set_name("spinner");
+
+        let listing_page = stack.add_child(&list_view);
+        listing_page.set_name("listing");
+
         self.directory_list
             .bind_property("loading", &widgets.stack, "visible-child-name")
             .transform_to(|_, loading| Some(if loading { "spinner" } else { "listing" }))
@@ -384,8 +416,21 @@ fn build_list_item_view(
         .build();
     click_controller.connect_pressed(
         clone!(@weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
-            let target = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
-            handle_right_click(&selection, &list_item, menu, target);
+            // If the clicked item isn't part of the selection, select it.
+            let position = list_item.position();
+
+            if !list_item.is_selected() {
+                selection.select_item(position, true);
+            }
+
+            let item = list_item.item().unwrap();
+            let info = item.downcast_ref::<gio::FileInfo>().unwrap();
+
+            let model = populate_entry_menu_model(info);
+
+            menu.set_menu_model(Some(&model));
+            menu.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+            menu.popup();
         }),
     );
     root.add_controller(&click_controller);
@@ -420,8 +465,6 @@ fn build_list_item_view(
     root.add_controller(&drag_source_controller);
 
     register_context_actions(root.upcast_ref(), &rename_popover, sender.clone());
-
-    list_item.set_child(Some(&root));
 }
 
 /// Register right-click context menu actions and handlers.
@@ -513,6 +556,12 @@ fn register_context_actions(
         }),
     );
 
+    group.add_action(
+        &RelmAction::<NewFolderAction>::new_stateless(move |_| {
+            println!("new folder");
+        }),
+    );
+
     let actions = group.into_action_group();
     list_item_view.insert_action_group(
         <DirectoryListRightClickActionGroup as ActionGroupName>::NAME,
@@ -597,34 +646,8 @@ fn send_new_selection(selection: &gtk::MultiSelection, sender: &FactorySender<Di
     sender.output(AppMsg::NewSelection(selection));
 }
 
-/// Handles the right click operation on an individual list item.
-fn handle_right_click(
-    selection: &gtk::MultiSelection,
-    list_item: &gtk::ListItem,
-    menu: gtk::PopoverMenu,
-    target: gdk::Rectangle,
-) {
-    // If the right-clicked item isn't part of the selection, select it.
-    let position = list_item.position();
-
-    if !list_item.is_selected() {
-        selection.select_item(position, true);
-    }
-
-    if let Some(item) = list_item.item() {
-        let info = item.downcast_ref::<gio::FileInfo>().unwrap();
-
-        let menu_model = populate_menu_model(info);
-
-        menu.set_menu_model(Some(&menu_model));
-        menu.set_pointing_to(Some(&target));
-        menu.popup();
-    }
-}
-
-/// Constructs a new menu model for the given file info. Used to dynamically populate the menu on
-/// right click.
-fn populate_menu_model(file_info: &gio::FileInfo) -> gio::Menu {
+/// Constructs a new menu model for a directory entry's right-click context menu.
+fn populate_entry_menu_model(file_info: &gio::FileInfo) -> gio::Menu {
     let file = file_info.file().unwrap();
     let uri = file.uri().to_string();
 
@@ -675,6 +698,22 @@ fn populate_menu_model(file_info: &gio::FileInfo) -> gio::Menu {
     menu_model.freeze();
 
     menu_model
+}
+
+/// Constructs a new menu model for a directory's right-click context menu.
+fn populate_directory_menu_model() -> gio::Menu {
+    let model = gio::Menu::new();
+
+    let open_section = gio::Menu::new();
+
+    model.append_section(None, &open_section);
+
+    open_section.append_item(&RelmAction::<NewFolderAction>::to_menu_item(
+        "New Folder...",
+    ));
+
+    model.freeze();
+    model
 }
 
 /// Opens the default application for the given file.
