@@ -15,13 +15,14 @@ use gtk::{gio, glib, prelude::*};
 use log::*;
 use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
-use relm4::prelude::*;
+use relm4::{prelude::*, MessageBroker};
 
 mod alert;
 mod config;
 mod directory_list;
 mod file_preview;
 mod mount;
+mod new_folder_dialog;
 mod places_sidebar;
 mod util;
 
@@ -31,6 +32,8 @@ use crate::directory_list::{Directory, Selection};
 use crate::file_preview::{FilePreviewModel, FilePreviewMsg};
 use crate::mount::{Mount, MountMsg};
 use crate::places_sidebar::PlacesSidebarModel;
+
+static ERROR_BROKER: MessageBroker<AlertModel> = MessageBroker::new();
 
 #[derive(Debug)]
 pub struct AppModel {
@@ -225,7 +228,7 @@ impl Component for AppModel {
                 .forward(sender.input_sender(), identity),
             error_alert: AlertModel::builder()
                 .transient_for(widgets.main_window.clone())
-                .launch(())
+                .launch_with_broker((), &ERROR_BROKER)
                 .detach(),
             file_preview,
             _places_sidebar: places_sidebar,

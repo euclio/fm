@@ -13,8 +13,10 @@ use log::*;
 use relm4::actions::{ActionGroupName, RelmAction, RelmActionGroup};
 use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
-use relm4::{gtk, panel, view};
+use relm4::prelude::*;
+use relm4::view;
 
+use crate::new_folder_dialog::{NewFolderDialog, NewFolderDialogMsg};
 use crate::util::{self, fmt_files_as_uris, BitsetExt, GFileInfoExt};
 use crate::AppMsg;
 
@@ -38,6 +40,8 @@ pub struct Directory {
 
     /// The sorted list model (with a selection) that is displayed in the list view.
     list_model: gtk::MultiSelection,
+
+    new_folder_dialog: Option<Controller<NewFolderDialog>>,
 }
 
 impl Directory {
@@ -95,6 +99,8 @@ pub enum DirectoryMessage {
 
     /// Restore files in the current selection from the trash.
     RestoreSelectionFromTrash,
+
+    ShowNewFolderDialog,
 }
 
 #[relm4::factory(pub)]
@@ -168,6 +174,10 @@ impl FactoryComponent for Directory {
         Directory {
             directory_list,
             list_model,
+
+            // This can't be initialized here, since we need make the dialog transient for
+            // something but we don't have a reference to a widget here.
+            new_folder_dialog: None,
         }
     }
 
@@ -201,6 +211,29 @@ impl FactoryComponent for Directory {
 
         let widgets = view_output!();
 
+        let click_controller = gtk::GestureClick::builder()
+            .button(BUTTON_RIGHT_CLICK)
+            .build();
+        let dir = self.dir();
+
+        let menu = gtk::PopoverMenu::builder().has_arrow(false).build();
+        menu.set_parent(&widgets.list_view);
+
+        click_controller.connect_pressed(
+            clone!(@strong dir, @weak widgets.list_view as list_view, @strong menu => move |_, _, x, y| {
+                let model = populate_directory_menu_model();
+
+                menu.set_menu_model(Some(&model));
+                menu.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+                menu.popup();
+            }),
+        );
+        register_directory_context_actions(widgets.list_view.upcast_ref(), sender.clone());
+        widgets.list_view.add_controller(&click_controller);
+
+        let drop_target = new_drop_target_for_dir(self.dir(), sender.clone());
+        widgets.list_view.add_controller(&drop_target);
+
         self.directory_list
             .bind_property("loading", &widgets.stack, "visible-child-name")
             .transform_to(|_, loading| Some(if loading { "spinner" } else { "listing" }))
@@ -209,6 +242,13 @@ impl FactoryComponent for Directory {
 
         let drop_target = new_drop_target_for_dir(self.dir(), sender);
         widgets.list_view.add_controller(&drop_target);
+
+        self.new_folder_dialog = Some(
+            NewFolderDialog::builder()
+                .transient_for(&widgets.list_view)
+                .launch(dir)
+                .detach(),
+        );
 
         widgets
     }
@@ -290,6 +330,11 @@ impl FactoryComponent for Directory {
                     .await;
                 });
             }
+            DirectoryMessage::ShowNewFolderDialog => self
+                .new_folder_dialog
+                .as_ref()
+                .unwrap()
+                .emit(NewFolderDialogMsg::Show),
         }
     }
 }
@@ -384,8 +429,21 @@ fn build_list_item_view(
         .build();
     click_controller.connect_pressed(
         clone!(@weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
-            let target = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
-            handle_right_click(&selection, &list_item, menu, target);
+            // If the clicked item isn't part of the selection, select it.
+            let position = list_item.position();
+
+            if !list_item.is_selected() {
+                selection.select_item(position, true);
+            }
+
+            let item = list_item.item().unwrap();
+            let info = item.downcast_ref::<gio::FileInfo>().unwrap();
+
+            let model = populate_entry_menu_model(info);
+
+            menu.set_menu_model(Some(&model));
+            menu.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+            menu.popup();
         }),
     );
     root.add_controller(&click_controller);
@@ -419,13 +477,13 @@ fn build_list_item_view(
         .build();
     root.add_controller(&drag_source_controller);
 
-    register_context_actions(root.upcast_ref(), &rename_popover, sender.clone());
+    register_entry_context_actions(root.upcast_ref(), &rename_popover, sender.clone());
 
     list_item.set_child(Some(&root));
 }
 
 /// Register right-click context menu actions and handlers.
-fn register_context_actions(
+fn register_entry_context_actions(
     list_item_view: &gtk::Widget,
     rename_popover: &gtk::Popover,
     sender: FactorySender<Directory>,
@@ -520,6 +578,22 @@ fn register_context_actions(
     );
 }
 
+fn register_directory_context_actions(
+    directory_list_view: &gtk::Widget,
+    sender: FactorySender<Directory>,
+) {
+    let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
+
+    group.add_action(&RelmAction::<NewFolderAction>::new_stateless(move |_| {
+        sender.input(DirectoryMessage::ShowNewFolderDialog)
+    }));
+
+    directory_list_view.insert_action_group(
+        <DirectoryListRightClickActionGroup as ActionGroupName>::NAME,
+        Some(&group.into_action_group()),
+    );
+}
+
 /// Builds a new drop target that represents the current directory.
 ///
 /// The drop target accepts [`gio::File`]s and rejects files that are already in the same
@@ -554,7 +628,7 @@ fn new_drop_target_for_dir(dir: gio::File, sender: FactorySender<Directory>) -> 
         let res = file.move_(&destination, gio::FileCopyFlags::NONE, gio::Cancellable::NONE, None);
 
         if let Err(err) = res {
-            sender.output(AppMsg::Error(err.into()));
+            sender.output(AppMsg::Error(Box::new(err)));
             return false;
         }
 
@@ -597,34 +671,8 @@ fn send_new_selection(selection: &gtk::MultiSelection, sender: &FactorySender<Di
     sender.output(AppMsg::NewSelection(selection));
 }
 
-/// Handles the right click operation on an individual list item.
-fn handle_right_click(
-    selection: &gtk::MultiSelection,
-    list_item: &gtk::ListItem,
-    menu: gtk::PopoverMenu,
-    target: gdk::Rectangle,
-) {
-    // If the right-clicked item isn't part of the selection, select it.
-    let position = list_item.position();
-
-    if !list_item.is_selected() {
-        selection.select_item(position, true);
-    }
-
-    if let Some(item) = list_item.item() {
-        let info = item.downcast_ref::<gio::FileInfo>().unwrap();
-
-        let menu_model = populate_menu_model(info);
-
-        menu.set_menu_model(Some(&menu_model));
-        menu.set_pointing_to(Some(&target));
-        menu.popup();
-    }
-}
-
-/// Constructs a new menu model for the given file info. Used to dynamically populate the menu on
-/// right click.
-fn populate_menu_model(file_info: &gio::FileInfo) -> gio::Menu {
+/// Constructs a new menu model for a directory entry's right-click context menu.
+fn populate_entry_menu_model(file_info: &gio::FileInfo) -> gio::Menu {
     let file = file_info.file().unwrap();
     let uri = file.uri().to_string();
 
@@ -677,6 +725,22 @@ fn populate_menu_model(file_info: &gio::FileInfo) -> gio::Menu {
     menu_model
 }
 
+/// Constructs a new menu model for a directory's right-click context menu.
+fn populate_directory_menu_model() -> gio::Menu {
+    let model = gio::Menu::new();
+
+    let open_section = gio::Menu::new();
+
+    model.append_section(None, &open_section);
+
+    open_section.append_item(&RelmAction::<NewFolderAction>::to_menu_item(
+        "New Folder...",
+    ));
+
+    model.freeze();
+    model
+}
+
 /// Opens the default application for the given file.
 fn open_application_for_file(file: &gio::File, sender: &FactorySender<Directory>) {
     info!("opening {} in external application", file.uri());
@@ -684,7 +748,7 @@ fn open_application_for_file(file: &gio::File, sender: &FactorySender<Directory>
     if let Err(e) =
         gio::AppInfo::launch_default_for_uri(file.uri().as_str(), None::<&gio::AppLaunchContext>)
     {
-        sender.output(AppMsg::Error(e.into()));
+        sender.output(AppMsg::Error(Box::new(e)));
     }
 }
 

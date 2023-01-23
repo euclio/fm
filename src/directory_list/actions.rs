@@ -24,6 +24,16 @@ impl ActionName for OpenChooserAction {
     const NAME: &'static str = "open-chooser";
 }
 
+pub struct NewFolderAction;
+
+impl ActionName for NewFolderAction {
+    type Group = DirectoryListRightClickActionGroup;
+    type Target = ();
+    type State = ();
+
+    const NAME: &'static str = "new-folder";
+}
+
 pub struct RenameAction;
 
 impl ActionName for RenameAction {
