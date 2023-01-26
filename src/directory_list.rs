@@ -205,7 +205,12 @@ impl FactoryComponent for Directory {
             .button(BUTTON_RIGHT_CLICK)
             .build();
         let dir = self.dir();
-        let menu = gtk::PopoverMenu::from_model(gio::MenuModel::NONE);
+
+        let menu = gtk::PopoverMenu::builder()
+            .has_arrow(false)
+            .build();
+        menu.set_parent(&widgets.list_view);
+
         click_controller.connect_pressed(
             clone!(@strong dir, @weak widgets.list_view as list_view, @strong menu => move |_, _, x, y| {
                 let model = populate_directory_menu_model();
