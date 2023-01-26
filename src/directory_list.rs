@@ -205,8 +205,9 @@ impl FactoryComponent for Directory {
             .button(BUTTON_RIGHT_CLICK)
             .build();
         let dir = self.dir();
+        let menu = gtk::PopoverMenu::from_model(gio::MenuModel::NONE);
         click_controller.connect_pressed(
-            clone!(@strong dir, @weak list_view => move |_, _, x, y| {
+            clone!(@strong dir, @weak widgets.list_view as list_view, @strong menu => move |_, _, x, y| {
                 let model = populate_directory_menu_model();
 
                 menu.set_menu_model(Some(&model));
@@ -214,24 +215,10 @@ impl FactoryComponent for Directory {
                 menu.popup();
             }),
         );
-        list_view.add_controller(&click_controller);
+        widgets.list_view.add_controller(&click_controller);
 
         let drop_target = new_drop_target_for_dir(self.dir(), sender.clone());
-        list_view.add_controller(&drop_target);
-
-        let stack = gtk::Stack::builder().vhomogeneous(false).build();
-
-        let spinner_page = stack.add_child(
-            &gtk::Spinner::builder()
-                .halign(gtk::Align::Center)
-                .valign(gtk::Align::Center)
-                .spinning(true)
-                .build(),
-        );
-        spinner_page.set_name("spinner");
-
-        let listing_page = stack.add_child(&list_view);
-        listing_page.set_name("listing");
+        widgets.list_view.add_controller(&drop_target);
 
         self.directory_list
             .bind_property("loading", &widgets.stack, "visible-child-name")
@@ -465,6 +452,8 @@ fn build_list_item_view(
     root.add_controller(&drag_source_controller);
 
     register_context_actions(root.upcast_ref(), &rename_popover, sender.clone());
+
+    list_item.set_child(Some(&root));
 }
 
 /// Register right-click context menu actions and handlers.
