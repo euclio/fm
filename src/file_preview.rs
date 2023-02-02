@@ -444,16 +444,17 @@ fn read_start_of_file(file: &gio::File) -> Result<Vec<u8>, io::Error> {
 /// Returns `true` for mime types that are "reasonably" readable as plain text.
 ///
 /// The definition of "reasonably" is intentionally left vague...
+#[rustfmt::skip]
 fn is_plain_text(mime: &Mime) -> bool {
-    #[allow(clippy::match_like_matches_macro)]
-    match (mime.type_().as_str(), mime.subtype().as_str()) {
-        ("text", _) => true,
-        ("application", "javascript") => true,
-        ("application", "json") => true,
-        ("application", "toml") => true,
-        ("application", "x-shellscript") => true,
-        _ => false,
-    }
+    matches!(
+        (mime.type_().as_str(), mime.subtype().as_str()),
+            | ("text", _)
+            | ("application", "javascript")
+            | ("application", "json")
+            | ("application", "toml")
+            | ("application", "x-shellscript")
+            | ("application", "xml")
+    )
 }
 
 /// Produces a description of the types of a group of files.
