@@ -10,7 +10,6 @@
 use std::convert::identity;
 use std::path::{self, PathBuf};
 
-use glib::clone;
 use gtk::{gio, glib, prelude::*};
 use log::*;
 use relm4::actions::{RelmAction, RelmActionGroup};
@@ -53,9 +52,6 @@ pub struct AppModel {
     /// bound on the next view update.
     update_directory_scroll_position: bool,
 
-    /// Open the app chooser to open the given file on the next view update.
-    open_app_for_file: Option<gio::File>,
-
     state: State,
 }
 
@@ -87,9 +83,6 @@ pub enum AppMsg {
     /// stack.
     /// - If the new selection is a file, the preview must be updated.
     NewSelection(Selection),
-
-    /// Trigger the application chooser to pick an application to open the given file.
-    ChooseAndLaunchApp(gio::File),
 
     /// Display a toast.
     Toast(String),
@@ -233,7 +226,6 @@ impl Component for AppModel {
             file_preview,
             _places_sidebar: places_sidebar,
             update_directory_scroll_position: false,
-            open_app_for_file: None,
             state,
         };
 
@@ -275,7 +267,6 @@ impl Component for AppModel {
         _sender: ComponentSender<Self>,
         _: &Self::Root,
     ) {
-        self.open_app_for_file = None;
         self.update_directory_scroll_position = false;
 
         match msg {
@@ -362,7 +353,6 @@ impl Component for AppModel {
 
                 self.update_directory_scroll_position = true;
             }
-            AppMsg::ChooseAndLaunchApp(file) => self.open_app_for_file = Some(file),
             AppMsg::Toast(message) => {
                 widgets.toast_overlay.add_toast(&adw::Toast::new(&message));
             }
@@ -403,43 +393,12 @@ impl Component for AppModel {
             // to see.
             set_adjustment_to_upper_bound(&widgets.directory_panes_scroller.hadjustment());
         }
-
-        if let Some(file) = &self.open_app_for_file {
-            choose_and_launch_app_for_file(widgets.main_window.clone(), file);
-        }
     }
 }
 
 relm4::new_action_group!(WindowActionGroup, "win");
 relm4::new_stateless_action!(AboutAction, WindowActionGroup, "about");
 relm4::new_stateless_action!(MountAction, WindowActionGroup, "mount");
-
-/// Creates a new [`gtk::AppChooserDialog`], shows it, and launches the selected application, if
-/// any.
-///
-/// Ideally this would be done in a child component, but we're limited by GTK here. For a typical
-/// dialog (see the [`alert`] module), we construct the dialog once and then modify its properties
-/// to respond to model updates while it's hidden for efficiency. In this case,
-/// `AppChooserDialog`'s `gfile` property is read-only, so we can't update the dialog after it's
-/// been created, Furthermore, even if we work around this by creating a new dialog manually in the
-/// view update, in a child component we don't have access to the parent widgets during the view
-/// update. This prevents us from setting the transient parent for the dialog and triggers a GTK
-/// warning. It's much easier to just handle everything in the `App` widget.
-fn choose_and_launch_app_for_file(parent: impl IsA<gtk::Window>, file: &gio::File) {
-    let dialog = gtk::AppChooserDialog::new(Some(&parent), gtk::DialogFlags::MODAL, file);
-
-    dialog.connect_response(clone!(@strong file => move |this, response| {
-        if let gtk::ResponseType::Ok = response {
-            if let Some(app_info) = this.app_info() {
-                let _ = app_info.launch(&[file.clone()], None::<&gio::AppLaunchContext>);
-            }
-        }
-
-        this.hide();
-    }));
-
-    dialog.show();
-}
 
 /// Updates the value of an adjustment to its upper bound.
 ///

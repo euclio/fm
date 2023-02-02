@@ -94,6 +94,9 @@ pub struct FileSelection {
 pub enum DirectoryMessage {
     OpenItemAtPosition(u32),
 
+    /// Open the application launcher dialog for the given file.
+    ChooseAndLaunchApp(gio::File),
+
     /// Send the files in the current selection to the trash.
     TrashSelection,
 
@@ -114,7 +117,7 @@ impl FactoryComponent for Directory {
     type CommandOutput = ();
 
     view! {
-        gtk::ScrolledWindow {
+        root = gtk::ScrolledWindow {
             set_width_request: WIDTH,
             set_hscrollbar_policy: gtk::PolicyType::Never,
 
@@ -253,7 +256,12 @@ impl FactoryComponent for Directory {
         widgets
     }
 
-    fn update(&mut self, msg: Self::Input, sender: FactorySender<Self>) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        msg: Self::Input,
+        sender: FactorySender<Self>,
+    ) {
         match msg {
             DirectoryMessage::OpenItemAtPosition(pos) => {
                 let item = self.directory_list.item(pos).unwrap();
@@ -264,11 +272,31 @@ impl FactoryComponent for Directory {
                     .unwrap();
                 open_application_for_file(&file, &sender);
             }
+            DirectoryMessage::ChooseAndLaunchApp(file) => {
+                let dialog = gtk::AppChooserDialog::new(
+                    widgets.root.toplevel_window().as_ref(),
+                    gtk::DialogFlags::MODAL,
+                    &file,
+                );
+
+                dialog.connect_response(clone!(@strong file => move |this, response| {
+                    if let gtk::ResponseType::Ok = response {
+                        if let Some(app_info) = this.app_info() {
+                            let _ = app_info.launch(&[file.clone()], gio::AppLaunchContext::NONE);
+                        }
+                    }
+
+                    this.hide();
+                }));
+
+                dialog.show();
+            }
             DirectoryMessage::TrashSelection => {
                 let selected_file_info = self.selected_file_info();
 
                 info!("trashing files: {:?}", fmt_file_info(&selected_file_info));
 
+                let sender = sender.clone();
                 relm4::spawn_local(async move {
                     let results = future::join_all(selected_file_info.iter().map(|f| {
                         f.file()
@@ -336,6 +364,8 @@ impl FactoryComponent for Directory {
                 .unwrap()
                 .emit(NewFolderDialogMsg::Show),
         }
+
+        self.update_view(widgets, sender);
     }
 }
 
@@ -499,7 +529,7 @@ fn register_entry_context_actions(
     group.add_action(&RelmAction::<OpenChooserAction>::new_with_target_value(
         clone!(@strong sender => move |_, uri: String| {
             let file = gio::File::for_uri(&uri);
-            sender.output(AppMsg::ChooseAndLaunchApp(file));
+            sender.input(DirectoryMessage::ChooseAndLaunchApp(file));
         }),
     ));
 
