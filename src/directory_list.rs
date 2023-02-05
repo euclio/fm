@@ -654,6 +654,11 @@ fn new_drop_target_for_dir(dir: gio::File, sender: FactorySender<Directory>) -> 
         info!("dropping {}", file.uri());
 
         let destination = dir.child(file.basename().unwrap());
+
+        if destination.equal(&file) {
+            return false;
+        }
+
         let res = file.move_(&destination, gio::FileCopyFlags::NONE, gio::Cancellable::NONE, None);
 
         if let Err(err) = res {
