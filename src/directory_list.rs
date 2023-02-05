@@ -233,9 +233,6 @@ impl FactoryComponent for Directory {
         register_directory_context_actions(widgets.list_view.upcast_ref(), sender.clone());
         widgets.list_view.add_controller(&click_controller);
 
-        let drop_target = new_drop_target_for_dir(self.dir(), sender.clone());
-        widgets.list_view.add_controller(&drop_target);
-
         self.directory_list
             .bind_property("loading", &widgets.stack, "visible-child-name")
             .transform_to(|_, loading| Some(if loading { "spinner" } else { "listing" }))
