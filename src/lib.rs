@@ -20,6 +20,7 @@ mod alert;
 mod config;
 mod directory_list;
 mod file_preview;
+mod filesystem;
 mod mount;
 mod new_folder_dialog;
 mod places_sidebar;

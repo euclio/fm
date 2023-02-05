@@ -17,7 +17,7 @@ use relm4::view;
 
 use crate::new_folder_dialog::{NewFolderDialog, NewFolderDialogMsg};
 use crate::util::{self, fmt_files_as_uris, BitsetExt, GFileInfoExt};
-use crate::AppMsg;
+use crate::{filesystem, AppMsg};
 
 mod actions;
 
@@ -646,22 +646,7 @@ fn new_drop_target_for_dir(dir: gio::File, sender: FactorySender<Directory>) -> 
     }));
 
     drop_target.connect_drop(clone!(@strong dir => move |_, value, _, _| {
-        let file = value.get::<gio::File>().unwrap();
-
-        info!("dropping {}", file.uri());
-
-        let destination = dir.child(file.basename().unwrap());
-
-        if destination.equal(&file) {
-            return false;
-        }
-
-        let res = file.move_(&destination, gio::FileCopyFlags::NONE, gio::Cancellable::NONE, None);
-
-        if let Err(err) = res {
-            sender.output(AppMsg::Error(Box::new(err)));
-            return false;
-        }
+        filesystem::handle_drop(value, &dir, sender.output_sender());
 
         true
     }));

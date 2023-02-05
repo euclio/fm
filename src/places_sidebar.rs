@@ -8,11 +8,11 @@
 
 use glib::clone;
 use gtk::prelude::*;
-use gtk::{gio, glib};
+use gtk::{gdk, gio, glib};
 use log::*;
 use relm4::{gtk, ComponentParts, ComponentSender, SimpleComponent};
 
-use crate::AppMsg;
+use crate::{filesystem, AppMsg};
 
 mod place;
 
@@ -256,6 +256,7 @@ impl SimpleComponent for PlacesSidebarModel {
         let widgets = view_output!();
 
         let factory = gtk::SignalListItemFactory::new();
+        let sender_ = sender.clone();
         factory.connect_setup(move |_, item| {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
 
@@ -290,6 +291,25 @@ impl SimpleComponent for PlacesSidebarModel {
                 "icon",
             );
             icon_expression.bind(&image, "gicon", Some(&image));
+
+            let drop_target = gtk::DropTarget::builder()
+                .actions(gdk::DragAction::MOVE)
+                .preload(true)
+                .build();
+
+            drop_target.set_types(&[gio::File::static_type()]);
+
+            let sender_ = sender_.clone();
+            drop_target.connect_drop(clone!(@strong item => move |_, value, _, _| {
+                let place = item.item().and_downcast::<PlaceObject>().unwrap();
+                let destination = place.property::<gio::File>("file");
+
+                filesystem::handle_drop(value, &destination, sender_.output_sender());
+
+                true
+            }));
+
+            root.add_controller(&drop_target);
 
             item.set_child(Some(&root));
         });
