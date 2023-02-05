@@ -2,7 +2,6 @@
 
 use std::cell::RefCell;
 use std::fmt::{self, Debug};
-use std::iter;
 
 use anyhow::bail;
 use educe::Educe;
@@ -302,19 +301,19 @@ impl FactoryComponent for Directory {
                         f.file()
                             .unwrap()
                             .trash_future(glib::source::PRIORITY_DEFAULT)
+                            .map(move |res| (res, f))
                     }))
                     .await;
 
-                    let trashed_files = iter::zip(results, selected_file_info)
-                        .flat_map(
-                            |(result, info)| {
-                                if result.is_ok() {
-                                    Some(info)
-                                } else {
-                                    None
-                                }
-                            },
-                        )
+                    let trashed_files = results
+                        .into_iter()
+                        .flat_map(|(result, info)| match result {
+                            Ok(_) => Some(info),
+                            Err(e) => {
+                                sender.output(AppMsg::Error(Box::new(e)));
+                                None
+                            }
+                        })
                         .collect::<Vec<_>>();
 
                     if !trashed_files.is_empty() {
