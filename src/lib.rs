@@ -15,6 +15,7 @@ use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
 use relm4::{prelude::*, MessageBroker};
 use tracing::*;
+use transfer_progress::NewTransfer;
 
 mod alert;
 mod config;
@@ -23,7 +24,9 @@ mod file_preview;
 mod filesystem;
 mod mount;
 mod new_folder_dialog;
+mod ops;
 mod places_sidebar;
+mod transfer_progress;
 mod util;
 
 use crate::alert::{AlertModel, AlertMsg};
@@ -31,7 +34,9 @@ use crate::config::State;
 use crate::directory_list::{Directory, Selection};
 use crate::file_preview::{FilePreviewModel, FilePreviewMsg};
 use crate::mount::{Mount, MountMsg};
+use crate::ops::Progress;
 use crate::places_sidebar::PlacesSidebarModel;
+use crate::transfer_progress::{TransferProgress, TransferProgressMsg};
 
 static ERROR_BROKER: MessageBroker<AlertModel> = MessageBroker::new();
 
@@ -43,6 +48,9 @@ pub struct AppModel {
     /// The directory listings. This factory acts as a stack, where new directories are pushed and
     /// popped relative to the root as the user clicks on new directory entries.
     directories: FactoryVecDeque<Directory>,
+
+    /// Displays the progress of ongoing file operations.
+    progress: FactoryVecDeque<TransferProgress>,
 
     error_alert: Controller<AlertModel>,
     file_preview: Controller<FilePreviewModel>,
@@ -67,6 +75,12 @@ impl AppModel {
 }
 
 #[derive(Debug)]
+pub enum Transfer {
+    New { id: u64, description: String },
+    Progress(Progress),
+}
+
+#[derive(Debug)]
 pub enum AppMsg {
     /// Display an arbitrary error in an alert dialog.
     Error(Box<dyn std::error::Error>),
@@ -84,6 +98,9 @@ pub enum AppMsg {
     /// stack.
     /// - If the new selection is a file, the preview must be updated.
     NewSelection(Selection),
+
+    /// Update the file transfer progress.
+    Transfer(Transfer),
 
     /// Display a toast.
     Toast(String),
@@ -118,6 +135,24 @@ impl Component for AppModel {
                         pack_end = &gtk::MenuButton {
                             set_icon_name: "open-menu-symbolic",
                             set_menu_model: Some(&primary_menu),
+                        },
+
+                        #[name = "transfer_progress_button"]
+                        pack_end = &gtk::MenuButton {
+                            set_visible: false,
+
+                            #[wrap(Some)]
+                            set_child = &gtk::Spinner {
+                                start: (),
+                            },
+
+                            #[wrap(Some)]
+                            set_popover = &gtk::Popover {
+                                #[name = "transfer_progress"]
+                                gtk::ListBox {
+                                    set_selection_mode: gtk::SelectionMode::None,
+                                },
+                            }
                         },
                     },
 
@@ -214,6 +249,10 @@ impl Component for AppModel {
             root: dir.clone(),
             directories: FactoryVecDeque::new(
                 widgets.directory_panes.clone(),
+                sender.input_sender(),
+            ),
+            progress: FactoryVecDeque::new(
+                widgets.transfer_progress.clone(),
                 sender.input_sender(),
             ),
             mount: Mount::builder()
@@ -353,6 +392,30 @@ impl Component for AppModel {
                 self.file_preview.emit(FilePreviewMsg::Hide);
 
                 self.update_directory_scroll_position = true;
+            }
+            AppMsg::Transfer(transfer) => {
+                match transfer {
+                    Transfer::New { id, description } => {
+                        self.progress
+                            .guard()
+                            .push_back(NewTransfer { id, description });
+                    }
+                    Transfer::Progress(progress) => {
+                        let idx = self
+                            .progress
+                            .iter()
+                            .position(|child| child.id == progress.id);
+
+                        if let Some(idx) = idx {
+                            self.progress
+                                .send(idx, TransferProgressMsg::Update(progress));
+                        }
+                    }
+                }
+
+                if !self.progress.is_empty() {
+                    widgets.transfer_progress_button.set_visible(true);
+                }
             }
             AppMsg::Toast(message) => {
                 widgets.toast_overlay.add_toast(&adw::Toast::new(&message));

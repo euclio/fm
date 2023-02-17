@@ -17,7 +17,7 @@ use tracing::*;
 
 use crate::new_folder_dialog::{NewFolderDialog, NewFolderDialogMsg};
 use crate::util::{self, fmt_files_as_uris, BitsetExt, GFileInfoExt};
-use crate::{filesystem, AppMsg};
+use crate::{filesystem, ops, AppMsg};
 
 mod actions;
 
@@ -326,6 +326,7 @@ impl FactoryComponent for Directory {
 
                 info!("restoring files: {:?}", fmt_file_info(&selected_file_info));
 
+                let sender = sender.clone();
                 relm4::spawn_local(async move {
                     future::join_all(selected_file_info.iter().map(|info| async {
                         let file = info.file().unwrap();
@@ -338,18 +339,20 @@ impl FactoryComponent for Directory {
                             )
                             .await;
 
-                        let original_path = info?
+                        let info = match info {
+                            Ok(info) => info,
+                            Err(err) => {
+                                sender.output(AppMsg::Error(Box::new(err)));
+                                return;
+                            }
+                        };
+
+                        let original_path = info
                             .attribute_byte_string(&gio::FILE_ATTRIBUTE_TRASH_ORIG_PATH)
                             .unwrap();
                         let original_path = gio::File::for_parse_name(&original_path);
 
-                        let (res, _) = file.move_future(
-                            &original_path,
-                            gio::FileCopyFlags::empty(),
-                            glib::source::PRIORITY_DEFAULT,
-                        );
-
-                        res.await
+                        ops::move_(file, original_path, sender.output_sender().clone()).await;
                     }))
                     .await;
                 });
@@ -646,7 +649,7 @@ fn new_drop_target_for_dir(dir: gio::File, sender: FactorySender<Directory>) -> 
     }));
 
     drop_target.connect_drop(clone!(@strong dir => move |_, value, _, _| {
-        filesystem::handle_drop(value, &dir, sender.output_sender());
+        filesystem::handle_drop(value, &dir, sender.output_sender().clone());
 
         true
     }));

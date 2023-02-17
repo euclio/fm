@@ -304,7 +304,7 @@ impl SimpleComponent for PlacesSidebarModel {
                 let place = item.item().and_downcast::<PlaceObject>().unwrap();
                 let destination = place.property::<gio::File>("file");
 
-                filesystem::handle_drop(value, &destination, sender_.output_sender());
+                filesystem::handle_drop(value, &destination, sender_.output_sender().clone());
 
                 true
             }));
