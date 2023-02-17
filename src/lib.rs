@@ -11,6 +11,7 @@ use std::convert::identity;
 use std::path::{self, PathBuf};
 
 use gtk::{gio, glib, prelude::*};
+use ops::Progress;
 use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
 use relm4::{prelude::*, MessageBroker};
@@ -23,6 +24,7 @@ mod file_preview;
 mod filesystem;
 mod mount;
 mod new_folder_dialog;
+mod ops;
 mod places_sidebar;
 mod util;
 
@@ -84,6 +86,9 @@ pub enum AppMsg {
     /// stack.
     /// - If the new selection is a file, the preview must be updated.
     NewSelection(Selection),
+
+    /// Update the file transfer progress indicator.
+    Progress(Progress),
 
     /// Display a toast.
     Toast(String),
@@ -353,6 +358,9 @@ impl Component for AppModel {
                 self.file_preview.emit(FilePreviewMsg::Hide);
 
                 self.update_directory_scroll_position = true;
+            }
+            AppMsg::Progress(progress) => {
+                info!("progress: {:?}", progress);
             }
             AppMsg::Toast(message) => {
                 widgets.toast_overlay.add_toast(&adw::Toast::new(&message));
