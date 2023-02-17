@@ -5,6 +5,7 @@
 
 use futures::prelude::*;
 use gtk::{gio, glib, prelude::*};
+use log::*;
 use relm4::{gtk, Sender};
 
 use crate::AppMsg;
@@ -18,6 +19,8 @@ pub struct Progress {
 
 /// Move a file to a destination.
 pub async fn move_(file: gio::File, destination: gio::File, sender: Sender<AppMsg>) {
+    info!("moving {} to {}", file.uri(), destination.uri());
+
     let (res, mut progress) = file.move_future(
         &destination,
         gio::FileCopyFlags::NONE,
@@ -27,10 +30,7 @@ pub async fn move_(file: gio::File, destination: gio::File, sender: Sender<AppMs
     let sender_ = sender.clone();
     relm4::spawn_local(async move {
         while let Some((current, total)) = progress.next().await {
-            let _ = sender_.send(AppMsg::Progress(Progress {
-                current,
-                total,
-            }));
+            let _ = sender_.send(AppMsg::Progress(Progress { current, total }));
         }
     });
 
