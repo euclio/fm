@@ -26,6 +26,7 @@ mod mount;
 mod new_folder_dialog;
 mod ops;
 mod places_sidebar;
+mod progress;
 mod util;
 
 use crate::alert::{AlertModel, AlertMsg};
@@ -33,7 +34,9 @@ use crate::config::State;
 use crate::directory_list::{Directory, Selection};
 use crate::file_preview::{FilePreviewModel, FilePreviewMsg};
 use crate::mount::{Mount, MountMsg};
+use crate::ops::Progress;
 use crate::places_sidebar::PlacesSidebarModel;
+use crate::progress::{TransferProgress, TransferProgressMsg};
 
 static ERROR_BROKER: MessageBroker<AlertModel> = MessageBroker::new();
 
@@ -45,6 +48,9 @@ pub struct AppModel {
     /// The directory listings. This factory acts as a stack, where new directories are pushed and
     /// popped relative to the root as the user clicks on new directory entries.
     directories: FactoryVecDeque<Directory>,
+
+    /// Displays the progress of ongoing file operations.
+    progress: FactoryVecDeque<TransferProgress>,
 
     error_alert: Controller<AlertModel>,
     file_preview: Controller<FilePreviewModel>,
@@ -123,6 +129,19 @@ impl Component for AppModel {
                         pack_end = &gtk::MenuButton {
                             set_icon_name: "open-menu-symbolic",
                             set_menu_model: Some(&primary_menu),
+                        },
+
+                        pack_end = &gtk::MenuButton {
+                            #[wrap(Some)]
+                            set_child = &gtk::Spinner {
+                                start: (),
+                            },
+
+                            #[wrap(Some)]
+                            set_popover = &gtk::Popover {
+                                #[name = "transfer_progress"]
+                                gtk::Box {},
+                            }
                         },
                     },
 
@@ -219,6 +238,10 @@ impl Component for AppModel {
             root: dir.clone(),
             directories: FactoryVecDeque::new(
                 widgets.directory_panes.clone(),
+                sender.input_sender(),
+            ),
+            progress: FactoryVecDeque::new(
+                widgets.transfer_progress.clone(),
                 sender.input_sender(),
             ),
             mount: Mount::builder()
@@ -360,7 +383,15 @@ impl Component for AppModel {
                 self.update_directory_scroll_position = true;
             }
             AppMsg::Progress(progress) => {
-                info!("progress: {:?}", progress);
+                let idx = self
+                    .progress
+                    .iter()
+                    .position(|child| child.id == progress.id);
+
+                if let Some(idx) = idx {
+                    self.progress
+                        .send(idx, TransferProgressMsg::Update(progress));
+                }
             }
             AppMsg::Toast(message) => {
                 widgets.toast_overlay.add_toast(&adw::Toast::new(&message));
