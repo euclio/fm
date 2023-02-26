@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use futures::prelude::*;
 use gtk::{gio, glib, prelude::*};
-use log::*;
 use relm4::{gtk, Sender};
+use tracing::*;
 
 use crate::AppMsg;
 

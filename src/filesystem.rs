@@ -1,6 +1,5 @@
 use gtk::{gio, glib, prelude::*};
 use relm4::{gtk, Sender};
-use tracing::*;
 
 use crate::ops;
 use crate::AppMsg;
