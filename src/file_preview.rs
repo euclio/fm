@@ -5,12 +5,12 @@ use std::io::{self, prelude::*};
 use glib::GString;
 use gtk::{gdk, gio, glib};
 use itertools::{Itertools, MinMaxResult};
-use log::*;
 use mime::Mime;
 use relm4::gtk::prelude::*;
 use relm4::prelude::*;
 use sourceview::{prelude::*, Language};
 use sourceview5 as sourceview;
+use tracing::*;
 
 use crate::directory_list::FileSelection;
 use crate::util::{self, pluralize};

@@ -11,10 +11,10 @@ use std::convert::identity;
 use std::path::{self, PathBuf};
 
 use gtk::{gio, glib, prelude::*};
-use log::*;
 use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
 use relm4::{prelude::*, MessageBroker};
+use tracing::*;
 
 mod alert;
 mod config;

@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 use directories::ProjectDirs;
-use log::*;
 use serde::{Deserialize, Serialize};
+use tracing::*;
 
 /// Application state that is not intended to be directly configurable by the user. The state is
 /// converted to and from JSON, and stored in the platform's application directory. It is not

@@ -8,12 +8,12 @@ use educe::Educe;
 use futures::prelude::*;
 use glib::clone;
 use glib::translate::{from_glib_full, IntoGlib};
-use log::*;
 use relm4::actions::{ActionGroupName, RelmAction, RelmActionGroup};
 use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
 use relm4::gtk::{gdk, gio, glib, pango, prelude::*};
 use relm4::prelude::*;
 use relm4::view;
+use tracing::*;
 
 use crate::new_folder_dialog::{NewFolderDialog, NewFolderDialogMsg};
 use crate::util::{self, fmt_files_as_uris, BitsetExt, GFileInfoExt};

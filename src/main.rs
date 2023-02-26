@@ -3,8 +3,11 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use log::*;
 use relm4::{gtk, RelmApp};
+use tracing::*;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
+use tracing_tree::HierarchicalLayer;
 
 use fm::AppModel;
 
@@ -18,7 +21,10 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    env_logger::init();
+    tracing_subscriber::registry()
+        .with(HierarchicalLayer::new(2))
+        .with(EnvFilter::from_default_env())
+        .init();
 
     let args = Args::parse();
     info!("running with arguments: {:?}", args);

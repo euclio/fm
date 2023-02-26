@@ -9,8 +9,8 @@
 use glib::clone;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
-use log::*;
 use relm4::{gtk, ComponentParts, ComponentSender, SimpleComponent};
+use tracing::*;
 
 use crate::{filesystem, AppMsg};
 
