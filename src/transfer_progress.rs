@@ -1,3 +1,4 @@
+use gtk::glib;
 use relm4::gtk;
 use relm4::panel::prelude::OrientableExt;
 use relm4::prelude::*;
@@ -44,6 +45,15 @@ impl FactoryComponent for TransferProgress {
             gtk::ProgressBar {
                 #[watch]
                 set_fraction: self.current as f64 / self.total as f64,
+
+                set_show_text: true,
+
+                #[watch]
+                set_text: Some(&format!(
+                    "{} / {}",
+                    glib::format_size(self.current as u64),
+                    glib::format_size(self.total as u64),
+                )),
             },
         }
     }
