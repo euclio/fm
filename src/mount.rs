@@ -1,11 +1,18 @@
 //! Dialog component for mounting a new mountable.
 
+use std::time::Duration;
+
 use adw::prelude::*;
-use gtk::gio;
+use futures::prelude::*;
+use futures::select;
+use gtk::{gio, glib};
 use relm4::prelude::*;
 
 use crate::util::GResultExt;
 use crate::AppMsg;
+
+/// The duration between progress pulses of the URI entry while a mount operation is underway.
+const PROGRESS_PULSE_DURATION: Duration = Duration::from_millis(100);
 
 #[derive(Debug)]
 pub struct Mount {
@@ -23,6 +30,12 @@ pub enum MountMsg {
 
     /// Close the dialog.
     Close,
+
+    /// Pulse the progress indicator.
+    Pulse,
+
+    /// Indicate that the mount operation has finished.
+    Finish,
 }
 
 #[relm4::component(pub)]
@@ -84,7 +97,13 @@ impl Component for Mount {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        msg: Self::Input,
+        sender: ComponentSender<Self>,
+        root: &Self::Root,
+    ) {
         match msg {
             MountMsg::Mount => {
                 self.visible = true;
@@ -94,21 +113,37 @@ impl Component for Mount {
                 let mount_operation =
                     gtk::MountOperation::new(Some(root.upcast_ref::<gtk::Window>()));
 
+                let mut mount_fut = uri_file
+                    .mount_enclosing_volume_future(
+                        gio::MountMountFlags::NONE,
+                        Some(&mount_operation),
+                    )
+                    .fuse();
+
+                widgets.uri_entry.set_progress_fraction(0.1);
+                widgets.uri_entry.progress_pulse();
+
+                let sender = sender.clone();
                 relm4::spawn_local(async move {
-                    match uri_file
-                        .mount_enclosing_volume_future(
-                            gio::MountMountFlags::NONE,
-                            Some(&mount_operation),
-                        )
-                        .await
-                        .filter_handled()
-                    {
-                        Ok(_) => (),
-                        Err(e) => sender.output(AppMsg::Error(Box::new(e))).unwrap(),
+                    loop {
+                        select! {
+                            _ = glib::timeout_future(PROGRESS_PULSE_DURATION).fuse() => {
+                                sender.input(MountMsg::Pulse);
+                            }
+                            res = mount_fut => {
+                                match res.filter_handled() {
+                                    Ok(_) => sender.input(MountMsg::Close),
+                                    Err(e) => {
+                                        sender.input(MountMsg::Finish);
+                                        sender.output(AppMsg::Error(Box::new(e))).unwrap();
+                                    }
+                                }
+
+                                break;
+                            }
+                        }
                     }
                 });
-
-                self.visible = false;
             }
             MountMsg::Response(gtk::ResponseType::Cancel) => {
                 self.visible = false;
@@ -116,7 +151,13 @@ impl Component for Mount {
             MountMsg::Close => {
                 self.visible = false;
             }
+            MountMsg::Finish => {
+                widgets.uri_entry.set_progress_fraction(0.0);
+            }
+            MountMsg::Pulse => widgets.uri_entry.progress_pulse(),
             _ => (),
         }
+
+        self.update_view(widgets, sender);
     }
 }
