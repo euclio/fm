@@ -21,7 +21,7 @@ mod imp {
     use std::cell::RefCell;
 
     use gdk::subclass::prelude::*;
-    use glib::{ParamFlags, ParamSpec, ParamSpecObject, Value};
+    use glib::{ParamSpec, ParamSpecObject, Value};
     use gtk::{graphene, prelude::*};
     use once_cell::sync::Lazy;
     use relm4::gtk::{self, gdk, glib};
@@ -36,20 +36,8 @@ mod imp {
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
                 vec![
-                    ParamSpecObject::new(
-                        "icon",
-                        "icon",
-                        "icon",
-                        gdk::Paintable::static_type(),
-                        ParamFlags::READWRITE,
-                    ),
-                    ParamSpecObject::new(
-                        "emblem",
-                        "emblem",
-                        "emblem",
-                        gdk::Paintable::static_type(),
-                        ParamFlags::READWRITE,
-                    ),
+                    ParamSpecObject::builder::<gdk::Paintable>("icon").build(),
+                    ParamSpecObject::builder::<gdk::Paintable>("emblem").build(),
                 ]
             });
             PROPERTIES.as_ref()

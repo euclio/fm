@@ -37,7 +37,7 @@ pub async fn move_(file: gio::File, destination: gio::File, sender: Sender<AppMs
 
     let (file_display_name, destination_display_name) = futures::join!(
         file.query_info_future(
-            &gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+            gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
             gio::FileQueryInfoFlags::NONE,
             glib::PRIORITY_DEFAULT,
         )
@@ -46,7 +46,7 @@ pub async fn move_(file: gio::File, destination: gio::File, sender: Sender<AppMs
             .parent()
             .unwrap()
             .query_info_future(
-                &gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+                gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
                 gio::FileQueryInfoFlags::NONE,
                 glib::PRIORITY_DEFAULT
             )

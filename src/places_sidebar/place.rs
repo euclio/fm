@@ -21,7 +21,7 @@ mod imp {
     use std::path::PathBuf;
 
     use gtk::gio::{self, prelude::*};
-    use gtk::glib::{self, ParamFlags, ParamSpec, ParamSpecObject, ParamSpecString, Value};
+    use gtk::glib::{self, ParamSpec, ParamSpecObject, ParamSpecString, Value};
     use gtk::subclass::prelude::*;
     use once_cell::sync::Lazy;
     use relm4::gtk;
@@ -46,21 +46,9 @@ mod imp {
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
                 vec![
-                    ParamSpecString::new("name", "name", "name", None, ParamFlags::READWRITE),
-                    ParamSpecObject::new(
-                        "file",
-                        "file",
-                        "file",
-                        gio::File::static_type(),
-                        ParamFlags::READWRITE,
-                    ),
-                    ParamSpecObject::new(
-                        "icon",
-                        "icon",
-                        "icon",
-                        gio::Icon::static_type(),
-                        ParamFlags::READWRITE,
-                    ),
+                    ParamSpecString::builder("name").build(),
+                    ParamSpecObject::builder::<gio::File>("file").build(),
+                    ParamSpecObject::builder::<gio::Icon>("icon").build(),
                 ]
             });
             PROPERTIES.as_ref()

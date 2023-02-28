@@ -88,7 +88,7 @@ impl Component for Mount {
 
     fn init(_: (), root: &Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let model = Mount {
-            uri_buffer: gtk::EntryBuffer::new(None),
+            uri_buffer: gtk::EntryBuffer::default(),
             visible: false,
         };
 

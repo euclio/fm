@@ -230,14 +230,14 @@ impl Component for FilePreviewModel {
                 // TODO: make async?
                 let file_info = file.query_info(
                     &[
-                        *gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
-                        *gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
-                        *gio::FILE_ATTRIBUTE_STANDARD_ICON,
-                        *gio::FILE_ATTRIBUTE_STANDARD_TYPE,
-                        *gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
-                        *gio::FILE_ATTRIBUTE_STANDARD_SIZE,
-                        *gio::FILE_ATTRIBUTE_TIME_CREATED,
-                        *gio::FILE_ATTRIBUTE_TIME_MODIFIED,
+                        &**gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                        &**gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+                        &**gio::FILE_ATTRIBUTE_STANDARD_ICON,
+                        &**gio::FILE_ATTRIBUTE_STANDARD_TYPE,
+                        &**gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
+                        &**gio::FILE_ATTRIBUTE_STANDARD_SIZE,
+                        &**gio::FILE_ATTRIBUTE_TIME_CREATED,
+                        &**gio::FILE_ATTRIBUTE_TIME_MODIFIED,
                     ]
                     .join(","),
                     gio::FileQueryInfoFlags::NONE,

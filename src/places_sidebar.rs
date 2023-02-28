@@ -85,7 +85,7 @@ impl PlacesSidebarModel {
         }
 
         if let Some(file) = selected_file {
-            let pos = store.iter::<PlaceObject>().unwrap().position(|item| {
+            let pos = store.iter::<PlaceObject>().position(|item| {
                 if let Ok(item) = item {
                     item.property::<gio::File>("file") == file
                 } else {
@@ -201,7 +201,7 @@ impl SimpleComponent for PlacesSidebarModel {
             let file = gio::File::for_path(&path);
             let name = file
                 .query_info(
-                    &gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+                    gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
                     gio::FileQueryInfoFlags::NONE,
                     gio::Cancellable::NONE,
                 )
@@ -239,7 +239,6 @@ impl SimpleComponent for PlacesSidebarModel {
             .model()
             .unwrap()
             .iter::<PlaceObject>()
-            .unwrap()
             .position(|place| {
                 if let Ok(place) = place {
                     place.property::<gio::File>("file").uri() == root_dir.uri()
@@ -309,7 +308,7 @@ impl SimpleComponent for PlacesSidebarModel {
                 true
             }));
 
-            root.add_controller(&drop_target);
+            root.add_controller(drop_target);
 
             item.set_child(Some(&root));
         });

@@ -66,7 +66,7 @@ impl SimpleComponent for NewFolderDialog {
     ) -> ComponentParts<Self> {
         let model = NewFolderDialog {
             parent,
-            entry_buffer: gtk::EntryBuffer::new(None),
+            entry_buffer: gtk::EntryBuffer::default(),
             visible: false,
         };
         let widgets = view_output!();

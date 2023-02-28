@@ -418,7 +418,7 @@ impl Component for AppModel {
                 }
             }
             AppMsg::Toast(message) => {
-                widgets.toast_overlay.add_toast(&adw::Toast::new(&message));
+                widgets.toast_overlay.add_toast(adw::Toast::new(&message));
             }
             AppMsg::About => {
                 gtk::AboutDialog::builder()
@@ -426,7 +426,7 @@ impl Component for AppModel {
                         env!("CARGO_PKG_AUTHORS")
                             .split(':')
                             .map(String::from)
-                            .collect(),
+                            .collect::<Vec<_>>(),
                     )
                     .comments(env!("CARGO_PKG_DESCRIPTION"))
                     .copyright("© 2021 Andy Russell")

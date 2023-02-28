@@ -169,9 +169,9 @@ impl FactoryComponent for Directory {
             Some(&dir),
         );
 
-        let list_model = gtk::SortListModel::new(Some(&directory_list), Some(&file_sorter()));
+        let list_model = gtk::SortListModel::new(Some(directory_list.clone()), Some(file_sorter()));
 
-        let list_model = gtk::MultiSelection::new(Some(&list_model));
+        let list_model = gtk::MultiSelection::new(Some(list_model));
 
         Directory {
             directory_list,
@@ -231,7 +231,7 @@ impl FactoryComponent for Directory {
             }),
         );
         register_directory_context_actions(widgets.list_view.upcast_ref(), sender.clone());
-        widgets.list_view.add_controller(&click_controller);
+        widgets.list_view.add_controller(click_controller);
 
         self.directory_list
             .bind_property("loading", &widgets.stack, "visible-child-name")
@@ -240,7 +240,7 @@ impl FactoryComponent for Directory {
             .build();
 
         let drop_target = new_drop_target_for_dir(self.dir(), sender);
-        widgets.list_view.add_controller(&drop_target);
+        widgets.list_view.add_controller(drop_target);
 
         self.new_folder_dialog = Some(
             NewFolderDialog::builder()
@@ -333,7 +333,7 @@ impl FactoryComponent for Directory {
 
                         let info = file
                             .query_info_future(
-                                &gio::FILE_ATTRIBUTE_TRASH_ORIG_PATH,
+                                gio::FILE_ATTRIBUTE_TRASH_ORIG_PATH,
                                 gio::FileQueryInfoFlags::empty(),
                                 glib::source::PRIORITY_DEFAULT,
                             )
@@ -348,7 +348,7 @@ impl FactoryComponent for Directory {
                         };
 
                         let original_path = info
-                            .attribute_byte_string(&gio::FILE_ATTRIBUTE_TRASH_ORIG_PATH)
+                            .attribute_byte_string(gio::FILE_ATTRIBUTE_TRASH_ORIG_PATH)
                             .unwrap();
                         let original_path = gio::File::for_parse_name(&original_path);
 
@@ -475,7 +475,7 @@ fn build_list_item_view(
             menu.popup();
         }),
     );
-    root.add_controller(&click_controller);
+    root.add_controller(click_controller);
 
     let drag_source_controller = gtk::DragSource::builder()
         .actions(gdk::DragAction::MOVE)
@@ -504,7 +504,7 @@ fn build_list_item_view(
             })
         })
         .build();
-    root.add_controller(&drag_source_controller);
+    root.add_controller(drag_source_controller);
 
     register_entry_context_actions(root.upcast_ref(), &rename_popover, sender.clone());
 
@@ -549,7 +549,7 @@ fn register_entry_context_actions(
             let file = gio::File::for_uri(&uri);
             if let Ok(edit_name) = file
                 .query_info(
-                    &gio::FILE_ATTRIBUTE_STANDARD_EDIT_NAME,
+                    gio::FILE_ATTRIBUTE_STANDARD_EDIT_NAME,
                     gio::FileQueryInfoFlags::NONE,
                     gio::Cancellable::NONE,
                 )
