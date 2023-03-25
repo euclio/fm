@@ -89,6 +89,15 @@ pub struct FileSelection {
     pub files: Vec<gio::File>,
 }
 
+impl FileSelection {
+    /// Returns true if the selection contains a single file that is a directory.
+    pub fn is_single_dir(&self) -> bool {
+        self.files.len() == 1
+            && self.files[0].query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+                == gio::FileType::Directory
+    }
+}
+
 #[derive(Debug)]
 pub enum DirectoryMessage {
     OpenItemAtPosition(u32),

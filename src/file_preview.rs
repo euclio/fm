@@ -215,7 +215,7 @@ impl Component for FilePreviewModel {
                 return;
             }
             // If the only selected file is a directory, then the preview will be hidden.
-            FilePreviewMsg::NewSelection(selection) if is_single_directory(&selection) => {
+            FilePreviewMsg::NewSelection(selection) if selection.is_single_dir() => {
                 self.info = vec![];
                 self.update_view(widgets, sender);
                 return;
@@ -417,12 +417,6 @@ pub enum FilePreviewMsg {
 
     /// Empty the contents of the preview.
     Hide,
-}
-
-fn is_single_directory(selection: &FileSelection) -> bool {
-    selection.files.len() == 1
-        && selection.files[0].query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
-            == gio::FileType::Directory
 }
 
 fn read_start_of_file(file: &gio::File) -> Result<Vec<u8>, io::Error> {
