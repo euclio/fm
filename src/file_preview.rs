@@ -17,6 +17,10 @@ use tracing::*;
 use crate::directory_list::FileSelection;
 use crate::util::{self, pluralize};
 
+mod pdf;
+
+use pdf::{Pdf, PdfPageChange};
+
 /// The buffer size used to read the beginning of a file to predict its mime type and preview its
 /// contents.
 const PREVIEW_BUFFER_SIZE: usize = 4096;
@@ -37,6 +41,9 @@ enum FilePreview {
 
     /// Image file, to be displayed in [`FilePreviewWidgets::picture`].
     Image(gio::File),
+
+    /// PDF document.
+    Pdf(Pdf),
 
     /// Non-text, non-image file to be previewed as an icon in [`FilePreviewWidgets::image`].
     Icon(gdk::Paintable),
@@ -90,8 +97,8 @@ impl FilePreviewModel {
             .as_ref()
             .map_or(String::from(MISSING_INFO), format_datetime);
 
-        let preview = match file.mime.type_() {
-            mime::IMAGE => {
+        let preview = match (file.mime.type_(), file.mime.subtype()) {
+            (mime::IMAGE, _) => {
                 let gfile = file.file.clone();
 
                 // Texture loading can be expensive and may block the UI thread.
@@ -104,6 +111,17 @@ impl FilePreviewModel {
                 });
 
                 FilePreview::Image(file.file.clone())
+            }
+            (_, mime::PDF) => {
+                // TODO: This should be async.
+                match poppler::Document::from_gfile(&file.file, None, gio::Cancellable::NONE) {
+                    Ok(document) => FilePreview::Pdf(Pdf::new(document)),
+                    Err(e) => {
+                        // TODO: Display error to the user.
+                        error!("error loading PDF: {}", e);
+                        return;
+                    }
+                }
             }
             _ => match &file.contents {
                 Some(contents) if !contents.contains(&b'\0') => {
@@ -174,7 +192,6 @@ impl Component for FilePreviewModel {
         adw::Clamp {
             gtk::Box {
                 add_css_class: "file-preview-widget",
-                set_baseline_position: gtk::BaselinePosition::Center,
                 set_orientation: gtk::Orientation::Vertical,
                 set_vexpand: true,
                 #[watch]
@@ -227,6 +244,45 @@ impl Component for FilePreviewModel {
                             set_valign: gtk::Align::Center,
                         }
                     },
+
+                    #[name = "pdf_container"]
+                    gtk::AspectFrame {
+
+                        set_obey_child: false,
+
+                        #[wrap(Some)]
+                        set_child = &gtk::Overlay {
+
+                            #[name = "pdf"]
+                            gtk::DrawingArea {
+                                add_css_class: "bordered",
+                                set_hexpand: true,
+                                set_vexpand: true,
+                            },
+
+                            #[name = "pdf_previous_button"]
+                            add_overlay = &gtk::Button {
+                                set_icon_name: "go-previous-symbolic",
+                                add_css_class: "osd",
+                                set_margin_start: 5,
+                                set_halign: gtk::Align::Start,
+                                set_valign: gtk::Align::Center,
+                                connect_clicked =>
+                                    FilePreviewMsg::ChangePdfPage(PdfPageChange::Previous),
+                            },
+
+                            #[name = "pdf_next_button"]
+                            add_overlay = &gtk::Button {
+                                set_icon_name: "go-next-symbolic",
+                                add_css_class: "osd",
+                                set_margin_end: 5,
+                                set_halign: gtk::Align::End,
+                                set_valign: gtk::Align::Center,
+                                connect_clicked =>
+                                    FilePreviewMsg::ChangePdfPage(PdfPageChange::Next),
+                            },
+                        }
+                    }
                 },
 
                 gtk::Grid {
@@ -364,6 +420,16 @@ impl Component for FilePreviewModel {
                     _ => self.update_multiple_file_preview(),
                 }
             }
+            FilePreviewMsg::ChangePdfPage(change) => {
+                if let Some(FilePreview::Pdf(pdf)) = &mut self.preview {
+                    pdf.update_page(change);
+
+                    if let Some(page) = pdf.current_page() {
+                        let (w, h) = page.size();
+                        widgets.pdf_container.set_ratio((w / h) as f32);
+                    }
+                }
+            }
         };
 
         self.update_view(widgets, sender);
@@ -406,6 +472,32 @@ impl Component for FilePreviewModel {
 
                 widgets.stack.set_visible_child(&widgets.text_container);
             }
+            Some(FilePreview::Pdf(pdf)) => {
+                if let Some(page) = pdf.current_page() {
+                    widgets
+                        .pdf_previous_button
+                        .set_visible(pdf.has_previous_page());
+                    widgets.pdf_next_button.set_visible(pdf.has_next_page());
+
+                    let (w, h) = page.size();
+                    widgets.pdf_container.set_ratio((w / h) as f32);
+
+                    widgets.pdf.set_draw_func(move |_, ctx, w, h| {
+                        ctx.set_source_rgb(1.0, 1.0, 1.0);
+                        ctx.paint().unwrap();
+
+                        let (page_w, page_h) = page.size();
+
+                        ctx.identity_matrix();
+
+                        ctx.scale(f64::from(w) / page_w, f64::from(h) / page_h);
+
+                        page.render(ctx);
+                    });
+                }
+
+                widgets.stack.set_visible_child(&widgets.pdf_container);
+            }
             None => (),
         }
     }
@@ -418,6 +510,9 @@ pub enum FilePreviewMsg {
 
     /// Queried file information is now available.
     FileInfoLoaded(Result<Vec<FileInfo>, glib::Error>),
+
+    /// Change PDF page.
+    ChangePdfPage(PdfPageChange),
 
     /// Empty the contents of the preview.
     Hide,
