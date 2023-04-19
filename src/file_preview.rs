@@ -38,6 +38,10 @@ enum FilePreview {
     /// Image file, to be displayed in [`FilePreviewWidgets::picture`].
     Image(gio::File),
 
+    /// PDF document.
+    #[cfg(feature = "pdf")]
+    Pdf(poppler::Document),
+
     /// Non-text, non-image file to be previewed as an icon in [`FilePreviewWidgets::image`].
     Icon(gdk::Paintable),
 }
@@ -90,8 +94,9 @@ impl FilePreviewModel {
             .as_ref()
             .map_or(String::from(MISSING_INFO), format_datetime);
 
-        let preview = match file.mime.type_() {
-            mime::IMAGE => {
+
+        let preview = match (file.mime.type_(), file.mime.subtype()) {
+            (mime::IMAGE, _) => {
                 let gfile = file.file.clone();
 
                 // Texture loading can be expensive and may block the UI thread.
@@ -104,6 +109,14 @@ impl FilePreviewModel {
                 });
 
                 FilePreview::Image(file.file.clone())
+            }
+            #[cfg(feature = "pdf")]
+            (_, mime::PDF) => {
+                // TODO: Should this be async?
+                let document =
+                    poppler::Document::from_gfile(&file.file, None, gio::Cancellable::NONE)
+                        .unwrap();
+                FilePreview::Pdf(document)
             }
             _ => match &file.contents {
                 Some(contents) if !contents.contains(&b'\0') => {
@@ -219,6 +232,11 @@ impl Component for FilePreviewModel {
                             set_monospace: true,
                         }
                     },
+
+                    #[name = "pdf"]
+                    gtk::DrawingArea {
+                        set_hexpand: true,
+                    }
                 },
 
                 gtk::Grid {
@@ -397,6 +415,18 @@ impl Component for FilePreviewModel {
                 buffer.set_language(language.as_ref());
 
                 widgets.stack.set_visible_child(&widgets.text_container);
+            }
+            #[cfg(feature = "pdf")]
+            Some(FilePreview::Pdf(document)) => {
+                if let Some(page) = document.page(0) {
+                    let page = page.clone();
+                    widgets.pdf.set_draw_func(move |_, ctx, w, h| {
+                        dbg!(w, h);
+                        page.render(ctx);
+                    });
+                }
+
+                widgets.stack.set_visible_child(&widgets.pdf);
             }
             None => (),
         }
