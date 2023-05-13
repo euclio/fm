@@ -187,7 +187,6 @@ impl Component for FilePreviewModel {
         adw::Clamp {
             gtk::Box {
                 add_css_class: "file-preview-widget",
-                set_baseline_position: gtk::BaselinePosition::Center,
                 set_orientation: gtk::Orientation::Vertical,
                 set_valign: gtk::Align::Center,
                 #[watch]
@@ -420,6 +419,12 @@ impl Component for FilePreviewModel {
             Some(FilePreview::Pdf(document)) => {
                 if let Some(page) = document.page(0) {
                     let page = page.clone();
+
+                    let (width, height) = page.size();
+
+                    widgets.pdf.set_content_width(width as i32);
+                    widgets.pdf.set_content_height(height as i32);
+
                     widgets.pdf.set_draw_func(move |_, ctx, w, h| {
                         dbg!(w, h);
                         page.render(ctx);
