@@ -498,7 +498,9 @@ impl Component for FilePreviewModel {
                     widgets.pdf.set_content_height(height as i32);
 
                     widgets.pdf.set_draw_func(move |_, ctx, w, h| {
-                        dbg!(w, h);
+                        ctx.set_source_rgb(1.0, 1.0, 1.0);
+                        ctx.paint().unwrap();
+
                         page.render(ctx);
                     });
                 }
