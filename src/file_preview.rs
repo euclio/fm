@@ -40,10 +40,51 @@ enum FilePreview {
 
     /// PDF document.
     #[cfg(feature = "pdf")]
-    Pdf(poppler::Document),
+    Pdf(Pdf),
 
     /// Non-text, non-image file to be previewed as an icon in [`FilePreviewWidgets::image`].
     Icon(gdk::Paintable),
+}
+
+#[derive(Debug)]
+struct Pdf {
+    document: poppler::Document,
+    page_index: i32,
+}
+
+impl Pdf {
+    fn new(document: poppler::Document) -> Self {
+        Pdf {
+            document,
+            page_index: 0,
+        }
+    }
+
+    fn has_previous_page(&self) -> bool {
+        self.page_index > 0
+    }
+
+    fn has_next_page(&self) -> bool {
+        self.page_index < self.document.n_pages() - 1
+    }
+
+    fn current_page(&self) -> Option<poppler::Page> {
+        self.document.page(self.page_index)
+    }
+
+    fn update_page(&mut self, change: PdfPageChange) {
+        match change {
+            PdfPageChange::Previous if self.has_previous_page() => self.page_index -= 1,
+            PdfPageChange::Next if self.has_next_page() => self.page_index += 1,
+            _ => (),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum PdfPageChange {
+    Previous,
+    Next,
 }
 
 #[derive(Debug)]
@@ -94,7 +135,6 @@ impl FilePreviewModel {
             .as_ref()
             .map_or(String::from(MISSING_INFO), format_datetime);
 
-
         let preview = match (file.mime.type_(), file.mime.subtype()) {
             (mime::IMAGE, _) => {
                 let gfile = file.file.clone();
@@ -116,7 +156,7 @@ impl FilePreviewModel {
                 let document =
                     poppler::Document::from_gfile(&file.file, None, gio::Cancellable::NONE)
                         .unwrap();
-                FilePreview::Pdf(document)
+                FilePreview::Pdf(Pdf::new(document))
             }
             _ => match &file.contents {
                 Some(contents) if !contents.contains(&b'\0') => {
@@ -239,18 +279,24 @@ impl Component for FilePreviewModel {
                             set_hexpand: true,
                         },
 
+                        #[name = "pdf_previous_button"]
                         add_overlay = &gtk::Button {
                             set_icon_name: "go-previous-symbolic",
                             add_css_class: "osd",
                             set_halign: gtk::Align::Start,
                             set_valign: gtk::Align::Center,
+                            connect_clicked =>
+                                FilePreviewMsg::ChangePdfPage(PdfPageChange::Previous),
                         },
 
+                        #[name = "pdf_next_button"]
                         add_overlay = &gtk::Button {
                             set_icon_name: "go-next-symbolic",
                             add_css_class: "osd",
                             set_halign: gtk::Align::End,
                             set_valign: gtk::Align::Center,
+                            connect_clicked =>
+                                FilePreviewMsg::ChangePdfPage(PdfPageChange::Next),
                         },
                     }
                 },
@@ -390,6 +436,11 @@ impl Component for FilePreviewModel {
                     _ => self.update_multiple_file_preview(),
                 }
             }
+            FilePreviewMsg::ChangePdfPage(change) => {
+                if let Some(FilePreview::Pdf(pdf)) = &mut self.preview {
+                    pdf.update_page(change);
+                }
+            }
         };
 
         self.update_view(widgets, sender);
@@ -433,11 +484,14 @@ impl Component for FilePreviewModel {
                 widgets.stack.set_visible_child(&widgets.text_container);
             }
             #[cfg(feature = "pdf")]
-            Some(FilePreview::Pdf(document)) => {
-                if let Some(page) = document.page(0) {
-                    let page = page.clone();
-
+            Some(FilePreview::Pdf(pdf)) => {
+                if let Some(page) = pdf.current_page() {
                     let (width, height) = page.size();
+
+                    widgets
+                        .pdf_previous_button
+                        .set_visible(pdf.has_previous_page());
+                    widgets.pdf_next_button.set_visible(pdf.has_next_page());
 
                     // TODO: Needs to scale with size of allocation.
                     widgets.pdf.set_content_width(width as i32);
@@ -463,6 +517,10 @@ pub enum FilePreviewMsg {
 
     /// Queried file information is now available.
     FileInfoLoaded(Result<Vec<FileInfo>, glib::Error>),
+
+    /// Change PDF page.
+    #[cfg(feature = "pdf")]
+    ChangePdfPage(PdfPageChange),
 
     /// Empty the contents of the preview.
     Hide,
