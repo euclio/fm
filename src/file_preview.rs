@@ -232,9 +232,26 @@ impl Component for FilePreviewModel {
                         }
                     },
 
-                    #[name = "pdf"]
-                    gtk::DrawingArea {
-                        set_hexpand: true,
+                    #[name = "pdf_container"]
+                    gtk::Overlay {
+                        #[name = "pdf"]
+                        gtk::DrawingArea {
+                            set_hexpand: true,
+                        },
+
+                        add_overlay = &gtk::Button {
+                            set_icon_name: "go-previous-symbolic",
+                            add_css_class: "osd",
+                            set_halign: gtk::Align::Start,
+                            set_valign: gtk::Align::Center,
+                        },
+
+                        add_overlay = &gtk::Button {
+                            set_icon_name: "go-next-symbolic",
+                            add_css_class: "osd",
+                            set_halign: gtk::Align::End,
+                            set_valign: gtk::Align::Center,
+                        },
                     }
                 },
 
@@ -422,6 +439,7 @@ impl Component for FilePreviewModel {
 
                     let (width, height) = page.size();
 
+                    // TODO: Needs to scale with size of allocation.
                     widgets.pdf.set_content_width(width as i32);
                     widgets.pdf.set_content_height(height as i32);
 
@@ -431,7 +449,7 @@ impl Component for FilePreviewModel {
                     });
                 }
 
-                widgets.stack.set_visible_child(&widgets.pdf);
+                widgets.stack.set_visible_child(&widgets.pdf_container);
             }
             None => (),
         }
