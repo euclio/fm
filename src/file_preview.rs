@@ -176,7 +176,7 @@ impl Component for FilePreviewModel {
                 add_css_class: "file-preview-widget",
                 set_baseline_position: gtk::BaselinePosition::Center,
                 set_orientation: gtk::Orientation::Vertical,
-                set_valign: gtk::Align::Center,
+                set_vexpand: true,
                 #[watch]
                 set_visible: !model.info.is_empty(),
 
@@ -186,7 +186,10 @@ impl Component for FilePreviewModel {
                     set_vhomogeneous: false,
 
                     #[name = "spinner"]
-                    gtk::Spinner {},
+                    gtk::Spinner {
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                    },
 
                     #[name = "icon"]
                     adw::Clamp {
@@ -201,7 +204,10 @@ impl Component for FilePreviewModel {
                     #[name = "picture"]
                     gtk::Picture {
                         add_css_class: "bordered",
+                        set_halign: gtk::Align::Center,
                         set_hexpand: true,
+                        set_valign: gtk::Align::Center,
+                        set_vexpand: true,
                     },
 
                     #[name = "text_container"]
@@ -210,6 +216,7 @@ impl Component for FilePreviewModel {
                         set_hexpand: true,
                         set_propagate_natural_height: true,
                         set_overflow: gtk::Overflow::Hidden,
+                        set_valign: gtk::Align::Center,
 
                         #[name = "text"]
                         sourceview::View {
@@ -217,6 +224,7 @@ impl Component for FilePreviewModel {
                             set_cursor_visible: false,
                             set_editable: false,
                             set_monospace: true,
+                            set_valign: gtk::Align::Center,
                         }
                     },
                 },
