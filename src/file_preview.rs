@@ -1,5 +1,6 @@
 //! Widget that displays file metadata and a small preview.
 
+use std::error::Error;
 use std::io;
 
 use futures::stream::{AbortHandle, Abortable, Aborted};
@@ -47,6 +48,9 @@ enum FilePreview {
 
     /// Non-text, non-image file to be previewed as an icon in [`FilePreviewWidgets::image`].
     Icon(gdk::Paintable),
+
+    /// An error occurred while loading the file.
+    Error(Box<dyn Error>),
 }
 
 #[derive(Debug)]
@@ -117,9 +121,9 @@ impl FilePreviewModel {
                 match poppler::Document::from_gfile(&file.file, None, gio::Cancellable::NONE) {
                     Ok(document) => FilePreview::Pdf(Pdf::new(document)),
                     Err(e) => {
-                        // TODO: Display error to the user.
                         error!("error loading PDF: {}", e);
-                        return;
+
+                        FilePreview::Error(Box::new(e))
                     }
                 }
             }
@@ -282,7 +286,14 @@ impl Component for FilePreviewModel {
                                     FilePreviewMsg::ChangePdfPage(PdfPageChange::Next),
                             },
                         }
-                    }
+                    },
+
+                    #[name = "error"]
+                    adw::StatusPage {
+                        set_icon_name: Some("dialog-warning-symbolic"),
+                        set_title: "Cannot Display Preview",
+                        set_description: Some(""),
+                    },
                 },
 
                 gtk::Grid {
@@ -402,10 +413,9 @@ impl Component for FilePreviewModel {
             FilePreviewMsg::FileInfoLoaded(Err(e)) => {
                 self.abort_preview.take();
 
-                // TODO: Display error to user.
                 error!("error while loading preview: {}", e);
 
-                return;
+                self.preview = Some(FilePreview::Error(Box::new(e)));
             }
             FilePreviewMsg::FileInfoLoaded(Ok(info)) => {
                 self.abort_preview.take();
@@ -497,6 +507,10 @@ impl Component for FilePreviewModel {
                 }
 
                 widgets.stack.set_visible_child(&widgets.pdf_container);
+            }
+            Some(FilePreview::Error(e)) => {
+                widgets.error.set_description(Some(&e.to_string()));
+                widgets.stack.set_visible_child(&widgets.error);
             }
             None => (),
         }
