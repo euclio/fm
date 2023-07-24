@@ -5,6 +5,7 @@ use std::time::Duration;
 use adw::prelude::*;
 use futures::prelude::*;
 use futures::select;
+use futures::stream::{AbortHandle, Abortable, Aborted};
 use gtk::{gio, glib};
 use relm4::prelude::*;
 
@@ -18,6 +19,7 @@ const PROGRESS_PULSE_DURATION: Duration = Duration::from_millis(100);
 pub struct Mount {
     uri_buffer: gtk::EntryBuffer,
     visible: bool,
+    abort_handle: Option<AbortHandle>,
 }
 
 #[derive(Debug)]
@@ -34,7 +36,7 @@ pub enum MountMsg {
     /// Pulse the progress indicator.
     Pulse,
 
-    /// Indicate that the mount operation has finished.
+    /// Abort any in-progress mount operation and reset the progress indicator.
     Finish,
 }
 
@@ -90,6 +92,7 @@ impl Component for Mount {
         let model = Mount {
             uri_buffer: gtk::EntryBuffer::default(),
             visible: false,
+            abort_handle: None,
         };
 
         let widgets = view_output!();
@@ -113,12 +116,14 @@ impl Component for Mount {
                 let mount_operation =
                     gtk::MountOperation::new(Some(root.upcast_ref::<gtk::Window>()));
 
-                let mut mount_fut = uri_file
-                    .mount_enclosing_volume_future(
-                        gio::MountMountFlags::NONE,
-                        Some(&mount_operation),
-                    )
-                    .fuse();
+                let mount_fut = uri_file.mount_enclosing_volume_future(
+                    gio::MountMountFlags::NONE,
+                    Some(&mount_operation),
+                );
+
+                let (abort_handle, abort_registration) = AbortHandle::new_pair();
+                self.abort_handle.replace(abort_handle);
+                let mut mount_fut = Abortable::new(mount_fut, abort_registration).fuse();
 
                 widgets.uri_entry.set_progress_fraction(0.1);
                 widgets.uri_entry.progress_pulse();
@@ -131,10 +136,11 @@ impl Component for Mount {
                                 sender.input(MountMsg::Pulse);
                             }
                             res = mount_fut => {
-                                match res.filter_handled() {
-                                    Ok(_) => sender.input(MountMsg::Close),
-                                    Err(e) => {
-                                        sender.input(MountMsg::Finish);
+                                let res = res.map(|r| r.filter_handled());
+
+                                match res {
+                                    Ok(Ok(_)) | Err(Aborted) => sender.input(MountMsg::Close),
+                                    Ok(Err(e)) => {
                                         sender.output(AppMsg::Error(Box::new(e))).unwrap();
                                     }
                                 }
@@ -146,13 +152,19 @@ impl Component for Mount {
                 });
             }
             MountMsg::Response(gtk::ResponseType::Cancel) => {
+                sender.input(MountMsg::Finish);
                 self.visible = false;
             }
             MountMsg::Close => {
+                sender.input(MountMsg::Finish);
                 self.visible = false;
             }
             MountMsg::Finish => {
                 widgets.uri_entry.set_progress_fraction(0.0);
+
+                if let Some(handle) = self.abort_handle.take() {
+                    handle.abort();
+                }
             }
             MountMsg::Pulse => widgets.uri_entry.progress_pulse(),
             _ => (),
