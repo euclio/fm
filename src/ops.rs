@@ -85,3 +85,16 @@ pub async fn move_(file: gio::File, destination: gio::File, sender: Sender<AppMs
         let _ = sender.send(AppMsg::Error(Box::new(err)));
     }
 }
+
+/// Move a dropped file into the destination directory.
+pub fn handle_drop(value: &glib::Value, destination: &gio::File, sender: Sender<AppMsg>) {
+    let file = value.get::<gio::File>().unwrap();
+
+    let destination_file = destination.child(file.basename().unwrap());
+
+    if destination_file.equal(&file) {
+        return;
+    }
+
+    relm4::spawn_local(move_(file, destination_file, sender));
+}

@@ -17,8 +17,8 @@ use tracing::*;
 
 use super::app::AppMsg;
 use super::new_folder_dialog::{NewFolderDialog, NewFolderDialogMsg};
+use crate::ops;
 use crate::util::{self, fmt_files_as_uris, BitsetExt, GFileInfoExt};
-use crate::{filesystem, ops};
 
 mod actions;
 
@@ -650,7 +650,7 @@ fn new_drop_target_for_dir(dir: gio::File, sender: FactorySender<Directory>) -> 
     }));
 
     drop_target.connect_drop(clone!(@strong dir => move |_, value, _, _| {
-        filesystem::handle_drop(value, &dir, sender.output_sender().clone());
+        ops::handle_drop(value, &dir, sender.output_sender().clone());
 
         true
     }));

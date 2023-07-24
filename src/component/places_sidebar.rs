@@ -13,7 +13,7 @@ use relm4::{gtk, ComponentParts, ComponentSender, SimpleComponent};
 use tracing::*;
 
 use super::app::AppMsg;
-use crate::filesystem;
+use crate::ops;
 
 mod place;
 
@@ -304,7 +304,7 @@ impl SimpleComponent for PlacesSidebarModel {
                 let place = item.item().and_downcast::<PlaceObject>().unwrap();
                 let destination = place.property::<gio::File>("file");
 
-                filesystem::handle_drop(value, &destination, sender_.output_sender().clone());
+                ops::handle_drop(value, &destination, sender_.output_sender().clone());
 
                 true
             }));
