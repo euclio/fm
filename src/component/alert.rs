@@ -5,6 +5,9 @@
 
 use gtk::prelude::*;
 use relm4::prelude::*;
+use relm4::MessageBroker;
+
+pub static ERROR_BROKER: MessageBroker<AlertModel> = MessageBroker::new();
 
 #[derive(Debug)]
 pub struct AlertModel {

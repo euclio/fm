@@ -15,7 +15,7 @@ use sourceview::{prelude::*, Language};
 use sourceview5 as sourceview;
 use tracing::*;
 
-use crate::directory_list::FileSelection;
+use super::directory_list::FileSelection;
 use crate::util::{self, pluralize};
 
 mod pdf;

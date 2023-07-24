@@ -2,8 +2,7 @@ use gtk::prelude::*;
 use gtk::{gio, glib};
 use relm4::prelude::*;
 
-use crate::alert::AlertMsg;
-use crate::ERROR_BROKER;
+use super::alert::{AlertMsg, ERROR_BROKER};
 
 #[derive(Debug)]
 pub struct NewFolderDialog {

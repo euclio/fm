@@ -13,32 +13,23 @@ use std::path::{self, PathBuf};
 use gtk::{gio, glib, prelude::*};
 use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::factory::FactoryVecDeque;
-use relm4::{prelude::*, MessageBroker};
+use relm4::prelude::*;
 use tracing::*;
-use transfer_progress::NewTransfer;
 
-mod alert;
+mod component;
 mod config;
-mod directory_list;
-mod file_preview;
 mod filesystem;
-mod mount;
-mod new_folder_dialog;
 mod ops;
-mod places_sidebar;
-mod transfer_progress;
 mod util;
 
-use crate::alert::{AlertModel, AlertMsg};
+use crate::component::alert::{AlertModel, AlertMsg, ERROR_BROKER};
+use crate::component::directory_list::{Directory, Selection};
+use crate::component::file_preview::{FilePreviewModel, FilePreviewMsg};
+use crate::component::mount::{Mount, MountMsg};
+use crate::component::places_sidebar::PlacesSidebarModel;
+use crate::component::transfer_progress::{NewTransfer, TransferProgress, TransferProgressMsg};
 use crate::config::State;
-use crate::directory_list::{Directory, Selection};
-use crate::file_preview::{FilePreviewModel, FilePreviewMsg};
-use crate::mount::{Mount, MountMsg};
 use crate::ops::Progress;
-use crate::places_sidebar::PlacesSidebarModel;
-use crate::transfer_progress::{TransferProgress, TransferProgressMsg};
-
-static ERROR_BROKER: MessageBroker<AlertModel> = MessageBroker::new();
 
 #[derive(Debug)]
 pub struct AppModel {

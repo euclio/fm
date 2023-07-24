@@ -15,7 +15,7 @@ use relm4::prelude::*;
 use relm4::view;
 use tracing::*;
 
-use crate::new_folder_dialog::{NewFolderDialog, NewFolderDialogMsg};
+use super::new_folder_dialog::{NewFolderDialog, NewFolderDialogMsg};
 use crate::util::{self, fmt_files_as_uris, BitsetExt, GFileInfoExt};
 use crate::{filesystem, ops, AppMsg};
 
