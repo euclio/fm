@@ -10,7 +10,7 @@ use gtk::{gio, glib, prelude::*};
 use relm4::{gtk, Sender};
 use tracing::*;
 
-use crate::{AppMsg, Transfer};
+use crate::component::app::{AppMsg, Transfer};
 
 static ID: AtomicU64 = AtomicU64::new(0);
 

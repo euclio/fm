@@ -3,8 +3,8 @@ use relm4::gtk;
 use relm4::panel::prelude::OrientableExt;
 use relm4::prelude::*;
 
+use super::app::AppMsg;
 use crate::ops::Progress;
-use crate::AppMsg;
 
 #[derive(Debug)]
 pub struct NewTransfer {

@@ -9,8 +9,8 @@ use futures::stream::{AbortHandle, Abortable, Aborted};
 use gtk::{gio, glib};
 use relm4::prelude::*;
 
+use super::app::AppMsg;
 use crate::util::GResultExt;
-use crate::AppMsg;
 
 /// The duration between progress pulses of the URI entry while a mount operation is underway.
 const PROGRESS_PULSE_DURATION: Duration = Duration::from_millis(100);

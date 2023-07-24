@@ -12,7 +12,8 @@ use gtk::{gdk, gio, glib};
 use relm4::{gtk, ComponentParts, ComponentSender, SimpleComponent};
 use tracing::*;
 
-use crate::{filesystem, AppMsg};
+use super::app::AppMsg;
+use crate::filesystem;
 
 mod place;
 

@@ -1,8 +1,8 @@
 use gtk::{gio, glib, prelude::*};
 use relm4::{gtk, Sender};
 
+use crate::component::app::AppMsg;
 use crate::ops;
-use crate::AppMsg;
 
 /// Move a dropped file into the destination directory.
 pub fn handle_drop(value: &glib::Value, destination: &gio::File, sender: Sender<AppMsg>) {
