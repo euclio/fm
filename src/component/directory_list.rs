@@ -1,7 +1,9 @@
 //! Factory widget that displays a listing of the contents of a directory.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::{self, Debug};
+use std::sync::{Arc, Mutex};
 
 use anyhow::bail;
 use educe::Educe;
@@ -200,6 +202,38 @@ impl FactoryComponent for Directory {
             let item = item.downcast_ref::<gtk::ListItem>().unwrap();
             build_list_item_view(&selection, item, &sender);
         }));
+
+        // Store the drop controllers we add by widget so that we can remove them on unbind.
+        let controllers = Arc::new(Mutex::new(HashMap::new()));
+
+        factory.connect_bind(clone!(
+                @strong sender as sender,
+                @strong controllers as controllers,
+        => move |_, list_item| {
+            let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+            let widget = list_item.child().unwrap();
+
+            let info = list_item
+                .item()
+                .and_downcast::<gio::FileInfo>()
+                .unwrap();
+
+            if matches!(info.file_type(), gio::FileType::Directory) {
+                let dir = info.file().unwrap();
+                let target = new_drop_target_for_dir(dir, sender.clone());
+                widget.add_controller(target.clone());
+                controllers.lock().unwrap().insert(widget, target);
+            }
+        }));
+
+        factory.connect_unbind(move |_, list_item| {
+            let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+            let widget = list_item.child().unwrap();
+
+            if let Some(controller) = controllers.lock().unwrap().remove(&widget) {
+                widget.remove_controller(&controller);
+            }
+        });
 
         let sender_ = sender.clone();
         self.list_model
@@ -624,7 +658,7 @@ fn register_directory_context_actions(
     );
 }
 
-/// Builds a new drop target that represents the current directory.
+/// Builds a new drop target that copies files to the given directory.
 ///
 /// The drop target accepts [`gio::File`]s and rejects files that are already in the same
 /// directory.
