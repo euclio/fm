@@ -9,6 +9,7 @@
 
 mod component;
 mod config;
+pub mod logging;
 mod ops;
 mod util;
 

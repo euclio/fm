@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
+use gtk::glib;
 use relm4::{gtk, RelmApp};
 use tracing::*;
 use tracing_subscriber::prelude::*;
@@ -22,9 +23,11 @@ struct Args {
 
 fn main() -> Result<()> {
     tracing_subscriber::registry()
-        .with(HierarchicalLayer::new(2))
+        .with(HierarchicalLayer::new(2).with_targets(true))
         .with(EnvFilter::from_default_env())
         .init();
+
+    glib::log_set_writer_func(fm::logging::tracing_writer_func);
 
     let args = Args::parse();
     info!("running with arguments: {:?}", args);
