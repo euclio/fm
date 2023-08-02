@@ -43,6 +43,9 @@ enum FilePreview {
     /// Image file, to be displayed in [`FilePreviewWidgets::picture`].
     Image(gio::File),
 
+    /// Video preview.
+    Video(gio::File),
+
     /// PDF document.
     Pdf(Pdf),
 
@@ -115,6 +118,9 @@ impl FilePreviewModel {
                 });
 
                 FilePreview::Image(file.file.clone())
+            }
+            (mime::VIDEO, _) => {
+                FilePreview::Video(file.file.clone())
             }
             (_, mime::PDF) => {
                 // TODO: This should be async.
@@ -247,6 +253,11 @@ impl Component for FilePreviewModel {
                             set_monospace: true,
                             set_valign: gtk::Align::Center,
                         }
+                    },
+
+                    #[name = "video"]
+                    gtk::Video {
+
                     },
 
                     #[name = "pdf_container"]
@@ -481,6 +492,10 @@ impl Component for FilePreviewModel {
                 buffer.set_language(language.as_ref());
 
                 widgets.stack.set_visible_child(&widgets.text_container);
+            }
+            Some(FilePreview::Video(file)) => {
+                widgets.video.set_file(Some(file));
+                widgets.stack.set_visible_child(&widgets.video);
             }
             Some(FilePreview::Pdf(pdf)) => {
                 if let Some(page) = pdf.current_page() {
