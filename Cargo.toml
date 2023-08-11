@@ -11,7 +11,7 @@ description = "A small, general-purpose file manager."
 
 [dependencies]
 anyhow = "1.0.51"
-clap = { version = "3.1.18", features = ["derive"] }
+clap = { version = "4.3.21", features = ["derive"] }
 directories = "4.0.1"
 educe = { version = "0.4.19", features = ["Debug"], default-features = false }
 futures = { version = "0.3.25", default-features = false }
@@ -26,4 +26,4 @@ serde_json = "1.0.79"
 sourceview5 = "0.6.0"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-tracing-tree = "0.2.2"
+tracing-tree = "0.2.4"
