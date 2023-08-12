@@ -44,7 +44,7 @@ enum FilePreview {
     Image(gio::File),
 
     /// Video preview.
-    Video(gio::File),
+    Video(gtk::MediaFile),
 
     /// PDF document.
     Pdf(Pdf),
@@ -120,7 +120,13 @@ impl FilePreviewModel {
                 FilePreview::Image(file.file.clone())
             }
             (mime::VIDEO, _) => {
-                FilePreview::Video(file.file.clone())
+                let media_file = gtk::MediaFile::for_file(&file.file);
+
+                if media_file.has_video() {
+                    FilePreview::Video(media_file)
+                } else {
+                    FilePreview::Error("Unable to play video format.".into())
+                }
             }
             (_, mime::PDF) => {
                 // TODO: This should be async.
@@ -257,7 +263,8 @@ impl Component for FilePreviewModel {
 
                     #[name = "video"]
                     gtk::Video {
-
+                        set_hexpand: true,
+                        set_vexpand: false,
                     },
 
                     #[name = "pdf_container"]
@@ -493,8 +500,8 @@ impl Component for FilePreviewModel {
 
                 widgets.stack.set_visible_child(&widgets.text_container);
             }
-            Some(FilePreview::Video(file)) => {
-                widgets.video.set_file(Some(file));
+            Some(FilePreview::Video(media_file)) => {
+                widgets.video.set_media_stream(media_file.into());
                 widgets.stack.set_visible_child(&widgets.video);
             }
             Some(FilePreview::Pdf(pdf)) => {
