@@ -119,31 +119,29 @@ impl FactoryComponent for Directory {
     type CommandOutput = ();
 
     view! {
-        root = gtk::ScrolledWindow {
+        root = gtk::Stack {
             set_width_request: WIDTH,
-            set_hscrollbar_policy: gtk::PolicyType::Never,
 
-            #[name = "stack"]
-            gtk::Stack {
-                set_vhomogeneous: false,
+            add_child = &gtk::Spinner {
+                set_halign: gtk::Align::Center,
+                set_valign: gtk::Align::Center,
+                set_spinning: true,
+            } -> { set_name: "spinner" },
 
-                add_child = &gtk::Spinner {
-                    set_halign: gtk::Align::Center,
-                    set_valign: gtk::Align::Center,
-                    set_spinning: true,
-                } -> { set_name: "spinner" },
+            add_child = &gtk::ScrolledWindow {
+                set_hscrollbar_policy: gtk::PolicyType::Never,
 
+                #[wrap(Some)]
                 #[name = "list_view"]
-                add_child = &gtk::ListView {
+                set_child = &gtk::ListView {
                     set_factory: Some(&factory),
                     set_model: Some(&self.list_model),
 
                     connect_activate[sender] => move |_, position| {
                         sender.input(DirectoryMessage::OpenItemAtPosition(position))
                     }
-
-                } -> { set_name: "listing" },
-            }
+                },
+            } -> { set_name: "listing" },
         }
     }
 
@@ -269,7 +267,7 @@ impl FactoryComponent for Directory {
         widgets.list_view.add_controller(click_controller);
 
         self.directory_list
-            .bind_property("loading", &widgets.stack, "visible-child-name")
+            .bind_property("loading", &widgets.root, "visible-child-name")
             .transform_to(|_, loading| Some(if loading { "spinner" } else { "listing" }))
             .sync_create()
             .build();
