@@ -19,7 +19,12 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          yum install -y gtk4-devel gtksourceview5-devel libadwaita-devel libpanel-devel
+          yum install -y \
+            gtk4-devel \
+            libadwaita-devel \
+            libpanel-devel \
+            gtksourceview5-devel \
+            poppler-glib-devel
 
       - uses: actions/checkout@v3
 
