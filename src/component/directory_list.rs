@@ -158,12 +158,12 @@ impl FactoryComponent for Directory {
         let directory_list = gtk::DirectoryList::new(
             Some(
                 &[
-                    "standard::name",
-                    "standard::display-name",
-                    "standard::icon",
-                    "standard::file-type",
-                    "standard::content-type",
-                    "standard::is-symlink",
+                    &**gio::FILE_ATTRIBUTE_STANDARD_NAME,
+                    &**gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+                    &**gio::FILE_ATTRIBUTE_STANDARD_ICON,
+                    &**gio::FILE_ATTRIBUTE_STANDARD_TYPE,
+                    &**gio::FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                    &**gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK,
                 ]
                 .join(","),
             ),
