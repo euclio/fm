@@ -37,9 +37,6 @@ const BUTTON_RIGHT_CLICK: u32 = 3;
 
 #[derive(Debug)]
 pub struct Directory {
-    /// The underlying directory list.
-    directory_list: gtk::DirectoryList,
-
     /// The sorted list model (with a selection) that is displayed in the list view.
     list_model: gtk::MultiSelection,
 
@@ -49,7 +46,18 @@ pub struct Directory {
 impl Directory {
     /// Returns the listed directory.
     pub fn dir(&self) -> gio::File {
-        self.directory_list.file().unwrap()
+        self.directory_list().file().unwrap()
+    }
+
+    /// Returns the underlying directory list model.
+    fn directory_list(&self) -> gtk::DirectoryList {
+        self.list_model
+            .model()
+            .and_downcast::<gtk::SortListModel>()
+            .unwrap()
+            .model()
+            .and_downcast()
+            .unwrap()
     }
 
     /// Returns the file info for the files that are currently selected.
@@ -175,7 +183,6 @@ impl FactoryComponent for Directory {
         let list_model = gtk::MultiSelection::new(Some(list_model));
 
         Directory {
-            directory_list,
             list_model,
 
             // This can't be initialized here, since we need make the dialog transient for
@@ -266,7 +273,7 @@ impl FactoryComponent for Directory {
         register_directory_context_actions(widgets.list_view.upcast_ref(), sender.clone());
         widgets.list_view.add_controller(click_controller);
 
-        self.directory_list
+        self.directory_list()
             .bind_property("loading", &widgets.root, "visible-child-name")
             .transform_to(|_, loading| Some(if loading { "spinner" } else { "listing" }))
             .sync_create()
@@ -293,13 +300,19 @@ impl FactoryComponent for Directory {
     ) {
         match msg {
             DirectoryMessage::OpenItemAtPosition(pos) => {
-                let item = self.directory_list.item(pos).unwrap();
-                let file = item
-                    .downcast_ref::<gio::FileInfo>()
-                    .unwrap()
-                    .file()
+                let file_info = self
+                    .list_model
+                    .item(pos)
+                    .and_downcast::<gio::FileInfo>()
                     .unwrap();
-                open_application_for_file(&file, &sender);
+
+                debug!(
+                    "opening item at position {}: {}",
+                    pos,
+                    file_info.display_name()
+                );
+
+                open_application_for_file(&file_info.file().unwrap(), &sender);
             }
             DirectoryMessage::ChooseAndLaunchApp(file) => {
                 let dialog = gtk::AppChooserDialog::new(
