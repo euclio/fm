@@ -39,6 +39,12 @@ untested, but if you can get the system dependencies to build, `fm` should work.
     $ pacman -Syu gtk4 libadwaita libpanel-git gtksourceview5
     ```
 
+    #### openSUSE
+
+    ```sh
+    $ zypper in glib2-devel pango-devel gtk4-devel libadwaita-devel libpanel-devel gtksourceview5-devel libpoppler-glib-devel
+    ```
+
 3. Build and run the application.
 
     ```sh
