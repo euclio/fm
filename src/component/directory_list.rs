@@ -140,14 +140,23 @@ impl FactoryComponent for Directory {
                 set_hscrollbar_policy: gtk::PolicyType::Never,
 
                 #[wrap(Some)]
-                #[name = "list_view"]
-                set_child = &gtk::ListView {
-                    set_factory: Some(&factory),
-                    set_model: Some(&self.list_model),
+                set_child = &gtk::Box {
+                    set_layout_manager: Some(gtk::BinLayout::new()),
 
-                    connect_activate[sender] => move |_, position| {
-                        sender.input(DirectoryMessage::OpenItemAtPosition(position))
-                    }
+                    #[name = "list_view"]
+                    gtk::ListView {
+                        set_factory: Some(&factory),
+                        set_model: Some(&self.list_model),
+
+                        connect_activate[sender] => move |_, position| {
+                            sender.input(DirectoryMessage::OpenItemAtPosition(position))
+                        },
+                    },
+
+                    #[name = "context_menu"]
+                    gtk::PopoverMenu::from_model(gio::MenuModel::NONE) {
+                        set_has_arrow: false,
+                    },
                 },
             } -> { set_name: "listing" },
         }
@@ -258,8 +267,7 @@ impl FactoryComponent for Directory {
             .build();
         let dir = self.dir();
 
-        let menu = gtk::PopoverMenu::builder().has_arrow(false).build();
-        menu.set_parent(&widgets.list_view);
+        let menu = &widgets.context_menu;
 
         click_controller.connect_pressed(
             clone!(@strong dir, @weak widgets.list_view as list_view, @strong menu => move |_, _, x, y| {
