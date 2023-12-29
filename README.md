@@ -39,6 +39,12 @@ untested, but if you can get the system dependencies to build, `fm` should work.
     $ pacman -Syu gtk4 libadwaita libpanel-git gtksourceview5
     ```
 
+    #### Fedora
+
+    ```
+    $ dnf install -y gtk4 libadwaita-devel libpanel
+    ```
+
     #### openSUSE
 
     ```sh
