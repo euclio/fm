@@ -249,6 +249,8 @@ impl SimpleComponent for PlacesSidebarModel {
             });
         if let Some(pos) = root_place_position {
             model.places_model.set_selected(pos as u32);
+        } else {
+            model.places_model.set_selected(gtk::INVALID_LIST_POSITION);
         }
 
         model.update_mounts();
