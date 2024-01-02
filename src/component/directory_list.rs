@@ -49,6 +49,11 @@ impl Directory {
         self.directory_list().file().unwrap()
     }
 
+    /// Return the current selection.
+    pub fn selection(&self) -> Selection {
+        build_selection(&self.list_model)
+    }
+
     /// Returns the underlying directory list model.
     fn directory_list(&self) -> gtk::DirectoryList {
         self.list_model
@@ -711,11 +716,11 @@ fn new_drop_target_for_dir(dir: gio::File, sender: FactorySender<Directory>) -> 
     drop_target
 }
 
-/// Notifies the main component of the path of a new selection.
-fn send_new_selection(selection: &gtk::MultiSelection, sender: &FactorySender<Directory>) {
+/// Construct a new [`Selection`] from the given list model.
+fn build_selection(selection: &gtk::MultiSelection) -> Selection {
     let selected_set = selection.selection();
 
-    let selection = if selected_set.is_empty() {
+    if selected_set.is_empty() {
         Selection::None
     } else {
         let directory_list = selection
@@ -739,9 +744,12 @@ fn send_new_selection(selection: &gtk::MultiSelection, sender: &FactorySender<Di
             .collect();
 
         Selection::Files(FileSelection { parent: dir, files })
-    };
+    }
+}
 
-    sender.output(AppMsg::NewSelection(selection));
+/// Notifies the main component of the path of a new selection.
+fn send_new_selection(selection: &gtk::MultiSelection, sender: &FactorySender<Directory>) {
+    sender.output(AppMsg::NewSelection(build_selection(selection)));
 }
 
 /// Constructs a new menu model for a directory entry's right-click context menu.
