@@ -141,6 +141,7 @@ impl Component for Mount {
                                 match res {
                                     Ok(Ok(_)) | Err(Aborted) => sender.input(MountMsg::Close),
                                     Ok(Err(e)) => {
+                                        sender.input(MountMsg::Finish);
                                         sender.output(AppMsg::Error(Box::new(e))).unwrap();
                                     }
                                 }
