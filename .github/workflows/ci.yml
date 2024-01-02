@@ -33,14 +33,15 @@ jobs:
           toolchain: ${{ matrix.rust }}
           components: clippy
 
-      - name: Clippy
-        run: cargo clippy -- --deny warnings
-
       - name: Build
         run: cargo build
 
       - name: Test
         run: cargo test
+
+      - name: Clippy
+        run: cargo clippy -- --deny warnings
+
   fmt:
     name: rustfmt
     runs-on: ubuntu-latest
