@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+# SOURCES:
+# https://doc.rust-lang.org/cargo/guide/dependencies.html
+# https://gtk-rs.org/gtk4-rs/stable/latest/book/project_setup.html
+# https://gtk-rs.org/gtk4-rs/stable/latest/book/libadwaita.html?highlight=libad#libadwaita
+# https://github.com/bilelmoussaoui/sourceview5-rs/blob/main/Dockerfile
+# https://github.com/GNOME/gtksourceview
+
+cat << 'DESCRIPTION' >/dev/null
+Build and install fm from source on Fedora 37.
+DESCRIPTION
+
+export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib64:/usr/include/gtksourceview-5:$PKG_CONFIG_PATH"
+
+# install dependencies
+sudo dnf install -y gtk4 gtk-update-icon-cache libadwaita-devel libpanel meson rust
+
+# TODO: use `mktemp`
+# install gtksourceview 5.0.0 from source
+if [ ! -d /tmp/gtksourceview-5.0.0 ]; then
+	cd /tmp
+	curl -LJO https://download.gnome.org/sources/gtksourceview/5.0/gtksourceview-5.0.0.tar.xz
+	tar -xf /tmp/gtksourceview-5.0.0.tar.xz --directory /tmp
+fi
+cd /tmp/gtksourceview-5.0.0/
+meson _build --prefix=/usr -Dvapi=false
+ninja -C _build
+sudo ninja -C _build install
+
+# clone repo
+if [ ! -d /tmp/fm ]; then
+	cd /tmp
+	git clone https://github.com/euclio/fm.git
+fi
+
+# build/run the app
+if [ ! -d "/tmp/fm/target/release" ]; then
+	cd /tmp/fm
+	cargo build --release --manifest-path /tmp/fm/Cargo.toml
+fi
+
+# TODO: get version for comparison/conditionals/desktop file
+# install the app
+if [ ! -f "/usr/bin/fm" ]; then
+	sudo cp /tmp/fm/target/release/fm /usr/bin/fm
+fi
+
+# TODO: swap icon
+# write desktop file
+if [ ! -f "/usr/share/applications/fm.desktop" ]; then
+	sudo tee /usr/share/applications/fm.desktop <<- EOF
+	[Desktop Entry]
+	Name=fm
+	Comment=fm is a small, general-purpose file manager built using GTK and Relm4.
+	Exec=fm
+	Icon=org.gnome.Nautilus
+	Terminal=false
+	Type=Application
+	Categories=GTK;GNOME;Utility;
+	EOF
+fi
+
+# cleanup build files
+rm -rf /tmp/gtksourceview-5.0.0
+rm -rf /tmp/gtksourceview-5.0.0.tar.xz
+rm -rf /tmp/fm
