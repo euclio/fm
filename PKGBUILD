@@ -1,7 +1,7 @@
 
 # Maintainer: Andy Russell <arussell123@gmail.com>
 
-pkgname=fm-git
+pkgname=fm-euclio-git
 pkgver=VERSION
 pkgrel=1
 pkgdesc="Small, general purpose file manager built with GTK"
@@ -11,7 +11,7 @@ license=('MIT')
 groups=()
 depends=('gtk4' 'libadwaita' 'libpanel' 'gtksourceview5')
 makedepends=('git' 'rust' 'cargo')
-provides=("fm")
+provides=("fm-euclio")
 conflicts=("fm")
 source=("git+$url")
 sha256sums=('SKIP')
@@ -37,6 +37,6 @@ check() {
 package() {
   cd "$srcdir/${pkgname%-git}"
 
-  install -Dm755 "$srcdir/${pkgname%-git}/target/release/fm" "$pkgdir/usr/bin/fm"
+  install -Dm755 "$srcdir/${pkgname%-git}/target/release/fm-euclio" "$pkgdir/usr/bin/fm-euclio"
   install -Dm644 LICENSE -t "${pkgdir}/usr/share/licenses/${pkgname%-git}"
 }
