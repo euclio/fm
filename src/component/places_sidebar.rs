@@ -136,40 +136,76 @@ impl SimpleComponent for PlacesSidebarModel {
 
     fn init(
         root_dir: gio::File,
-        root: &Self::Root,
+        root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let volume_monitor = gio::VolumeMonitor::get();
 
-        volume_monitor.connect_volume_added(clone!(@strong sender => move |_, _| {
-            sender.input(PlacesSidebarMsg::Update);
-        }));
-        volume_monitor.connect_volume_changed(clone!(@strong sender => move |_, _| {
-            sender.input(PlacesSidebarMsg::Update);
-        }));
-        volume_monitor.connect_volume_removed(clone!(@strong sender => move |_, _| {
-            sender.input(PlacesSidebarMsg::Update);
-        }));
-        volume_monitor.connect_mount_added(clone!(@strong sender => move |_, _| {
-            sender.input(PlacesSidebarMsg::Update);
-        }));
-        volume_monitor.connect_mount_changed(clone!(@strong sender => move |_, _| {
-            sender.input(PlacesSidebarMsg::Update);
-        }));
-        volume_monitor.connect_mount_removed(clone!(@strong sender => move |_, _| {
-            sender.input(PlacesSidebarMsg::Update);
-        }));
-        volume_monitor.connect_drive_connected(clone!(@strong sender => move |_, _| {
-            sender.input(PlacesSidebarMsg::Update);
-        }));
-        volume_monitor.connect_drive_changed(clone!(@strong sender => move |_, _| {
-            sender.input(PlacesSidebarMsg::Update);
-        }));
-        volume_monitor.connect_drive_disconnected(clone!(@strong sender => move |_, _| {
-            sender.input(PlacesSidebarMsg::Update);
-        }));
+        volume_monitor.connect_volume_added(clone!(
+            #[strong]
+            sender,
+            move |_, _| {
+                sender.input(PlacesSidebarMsg::Update);
+            }
+        ));
+        volume_monitor.connect_volume_changed(clone!(
+            #[strong]
+            sender,
+            move |_, _| {
+                sender.input(PlacesSidebarMsg::Update);
+            }
+        ));
+        volume_monitor.connect_volume_removed(clone!(
+            #[strong]
+            sender,
+            move |_, _| {
+                sender.input(PlacesSidebarMsg::Update);
+            }
+        ));
+        volume_monitor.connect_mount_added(clone!(
+            #[strong]
+            sender,
+            move |_, _| {
+                sender.input(PlacesSidebarMsg::Update);
+            }
+        ));
+        volume_monitor.connect_mount_changed(clone!(
+            #[strong]
+            sender,
+            move |_, _| {
+                sender.input(PlacesSidebarMsg::Update);
+            }
+        ));
+        volume_monitor.connect_mount_removed(clone!(
+            #[strong]
+            sender,
+            move |_, _| {
+                sender.input(PlacesSidebarMsg::Update);
+            }
+        ));
+        volume_monitor.connect_drive_connected(clone!(
+            #[strong]
+            sender,
+            move |_, _| {
+                sender.input(PlacesSidebarMsg::Update);
+            }
+        ));
+        volume_monitor.connect_drive_changed(clone!(
+            #[strong]
+            sender,
+            move |_, _| {
+                sender.input(PlacesSidebarMsg::Update);
+            }
+        ));
+        volume_monitor.connect_drive_disconnected(clone!(
+            #[strong]
+            sender,
+            move |_, _| {
+                sender.input(PlacesSidebarMsg::Update);
+            }
+        ));
 
-        let mut store = gio::ListStore::new(PlaceObject::static_type());
+        let mut store = gio::ListStore::new::<PlaceObject>();
 
         store.append(&PlaceObject::new(
             "Recent",
@@ -220,7 +256,7 @@ impl SimpleComponent for PlacesSidebarModel {
             gio::ThemedIcon::new("user-trash-symbolic").upcast_ref(),
         ));
 
-        let mount_store = gio::ListStore::new(PlaceObject::static_type());
+        let mount_store = gio::ListStore::new::<PlaceObject>();
 
         let mut model = PlacesSidebarModel {
             places_model: gtk::SingleSelection::builder()
@@ -302,22 +338,30 @@ impl SimpleComponent for PlacesSidebarModel {
             drop_target.set_types(&[gio::File::static_type()]);
 
             let sender_ = sender_.clone();
-            drop_target.connect_drop(clone!(@strong item => move |_, value, _, _| {
-                let place = item.item().and_downcast::<PlaceObject>().unwrap();
-                let destination = place.property::<gio::File>("file");
+            drop_target.connect_drop(clone!(
+                #[strong]
+                item,
+                move |_, value, _, _| {
+                    let place = item.item().and_downcast::<PlaceObject>().unwrap();
+                    let destination = place.property::<gio::File>("file");
 
-                ops::handle_drop(value, &destination, sender_.output_sender().clone());
+                    ops::handle_drop(value, &destination, sender_.output_sender().clone());
 
-                true
-            }));
+                    true
+                }
+            ));
 
             root.add_controller(drop_target);
 
             item.set_child(Some(&root));
         });
 
-        model.places_model.connect_selection_changed(
-            clone!(@strong sender, @weak model.mounts_model as mounts => move |selection, _, _| {
+        model.places_model.connect_selection_changed(clone!(
+            #[strong]
+            sender,
+            #[weak(rename_to = mounts)]
+            model.mounts_model,
+            move |selection, _, _| {
                 if let Some(selected_item) = selection.selected_item() {
                     mounts.set_selected(gtk::INVALID_LIST_POSITION);
 
@@ -326,10 +370,14 @@ impl SimpleComponent for PlacesSidebarModel {
 
                     sender.input(PlacesSidebarMsg::SelectionChanged(file));
                 }
-            }),
-        );
-        model.mounts_model.connect_selection_changed(
-            clone!(@strong sender, @weak model.places_model as places => move |selection, _, _| {
+            }
+        ));
+        model.mounts_model.connect_selection_changed(clone!(
+            #[strong]
+            sender,
+            #[weak(rename_to = places)]
+            model.places_model,
+            move |selection, _, _| {
                 if let Some(selected_item) = selection.selected_item() {
                     places.set_selected(gtk::INVALID_LIST_POSITION);
 
@@ -338,8 +386,8 @@ impl SimpleComponent for PlacesSidebarModel {
 
                     sender.input(PlacesSidebarMsg::SelectionChanged(file));
                 }
-            }),
-        );
+            }
+        ));
 
         widgets.places.set_factory(Some(&factory));
         widgets.places.set_model(Some(&model.places_model));

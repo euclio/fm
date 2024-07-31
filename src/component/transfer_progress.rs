@@ -31,8 +31,7 @@ impl FactoryComponent for TransferProgress {
     type CommandOutput = ();
     type Init = NewTransfer;
     type Input = TransferProgressMsg;
-    type Output = ();
-    type ParentInput = AppMsg;
+    type Output = AppMsg;
     type ParentWidget = gtk::ListBox;
 
     view! {

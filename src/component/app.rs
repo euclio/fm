@@ -62,7 +62,7 @@ pub enum Transfer {
 #[derive(Debug)]
 pub enum AppMsg {
     /// Display an arbitrary error in an alert dialog.
-    Error(Box<dyn std::error::Error>),
+    Error(Box<dyn std::error::Error + Send>),
 
     /// The file root has changed. Existing directory trees are now invalid and must be popped off
     /// the stack.
@@ -72,9 +72,9 @@ pub enum AppMsg {
     /// number of possible changes:
     ///
     /// - If the new selection is higher in the directory tree than the old selection, the lower
-    /// listings must be removed.
+    ///   listings must be removed.
     /// - If the new selection is a directory, a new directory listing is pushed onto the listing
-    /// stack.
+    ///   stack.
     /// - If the new selection is a file, the preview must be updated.
     NewSelection(Selection),
 
@@ -178,7 +178,7 @@ impl Component for AppModel {
                     warn!("unable to write application state: {}", e);
                 }
 
-                gtk::Inhibit(false)
+                glib::signal::Propagation::Proceed
             }
         }
     }
@@ -194,11 +194,7 @@ impl Component for AppModel {
         }
     }
 
-    fn init(
-        dir: PathBuf,
-        root: &Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> ComponentParts<Self> {
+    fn init(dir: PathBuf, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let dir = if !dir.is_dir() {
             dir.parent().unwrap_or(&dir)
         } else {
@@ -226,14 +222,12 @@ impl Component for AppModel {
 
         let mut model = AppModel {
             root: dir.clone(),
-            directories: FactoryVecDeque::new(
-                widgets.directory_panes.clone(),
-                sender.input_sender(),
-            ),
-            progress: FactoryVecDeque::new(
-                widgets.transfer_progress.clone(),
-                sender.input_sender(),
-            ),
+            directories: FactoryVecDeque::builder()
+                .launch(widgets.directory_panes.clone())
+                .forward(sender.input_sender(), identity),
+            progress: FactoryVecDeque::builder()
+                .launch(widgets.transfer_progress.clone())
+                .forward(sender.input_sender(), identity),
             mount: Mount::builder()
                 .transient_for(&widgets.main_window)
                 .launch(())
@@ -250,18 +244,18 @@ impl Component for AppModel {
 
         model.directories.guard().push_back(dir);
 
-        let group = RelmActionGroup::<WindowActionGroup>::new();
+        let mut group = RelmActionGroup::<WindowActionGroup>::new();
 
         let sender_ = sender.clone();
         let about_action: RelmAction<AboutAction> = RelmAction::new_stateless(move |_| {
             sender_.input(AppMsg::About);
         });
-        group.add_action(&about_action);
+        group.add_action(about_action);
 
         let mount_action: RelmAction<MountAction> = RelmAction::new_stateless(move |_| {
             sender.input(AppMsg::Mount);
         });
-        group.add_action(&mount_action);
+        group.add_action(mount_action);
 
         widgets
             .main_window

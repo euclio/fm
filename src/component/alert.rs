@@ -7,7 +7,7 @@ use gtk::prelude::*;
 use relm4::prelude::*;
 use relm4::MessageBroker;
 
-pub static ERROR_BROKER: MessageBroker<AlertModel> = MessageBroker::new();
+pub static ERROR_BROKER: MessageBroker<AlertMsg> = MessageBroker::new();
 
 #[derive(Debug)]
 pub struct AlertModel {
@@ -18,7 +18,7 @@ pub struct AlertModel {
 #[derive(Debug)]
 pub enum AlertMsg {
     Show { text: String },
-    Response(gtk::ResponseType),
+    Response,
 }
 
 #[relm4::component(pub)]
@@ -33,8 +33,8 @@ impl SimpleComponent for AlertModel {
             set_message_type: gtk::MessageType::Error,
             #[watch]
             set_visible: model.is_active,
-            connect_response[sender] => move |_, response| {
-                sender.input(AlertMsg::Response(response));
+            connect_response[sender] => move |_, _| {
+                sender.input(AlertMsg::Response);
             },
             set_text: Some("Something went wrong"),
             #[watch]
@@ -44,7 +44,7 @@ impl SimpleComponent for AlertModel {
         }
     }
 
-    fn init(_: (), root: &Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(_: (), root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let model = AlertModel {
             is_active: false,
             text: String::default(),
@@ -61,7 +61,7 @@ impl SimpleComponent for AlertModel {
                 self.text = text;
                 self.is_active = true;
             }
-            AlertMsg::Response(_) => {
+            AlertMsg::Response => {
                 self.is_active = false;
             }
         }

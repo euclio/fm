@@ -53,14 +53,14 @@ impl SimpleComponent for NewFolderDialog {
 
             connect_close_request[sender] => move |_| {
                 sender.input(NewFolderDialogMsg::Hide);
-                gtk::Inhibit(true)
+                glib::signal::Propagation::Proceed
             },
         }
     }
 
     fn init(
         parent: gio::File,
-        root: &Self::Root,
+        root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = NewFolderDialog {

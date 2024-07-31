@@ -39,7 +39,7 @@ pub async fn move_(file: gio::File, destination: gio::File, sender: Sender<AppMs
         file.query_info_future(
             gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
             gio::FileQueryInfoFlags::NONE,
-            glib::PRIORITY_DEFAULT,
+            glib::Priority::DEFAULT,
         )
         .map_ok(|info| info.display_name()),
         destination
@@ -48,7 +48,7 @@ pub async fn move_(file: gio::File, destination: gio::File, sender: Sender<AppMs
             .query_info_future(
                 gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
                 gio::FileQueryInfoFlags::NONE,
-                glib::PRIORITY_DEFAULT
+                glib::Priority::DEFAULT,
             )
             .map_ok(|info| info.display_name()),
     );
@@ -67,7 +67,7 @@ pub async fn move_(file: gio::File, destination: gio::File, sender: Sender<AppMs
     let (res, mut progress) = file.move_future(
         &destination,
         gio::FileCopyFlags::NONE,
-        glib::source::PRIORITY_DEFAULT,
+        glib::source::Priority::DEFAULT,
     );
 
     let sender_ = sender.clone();

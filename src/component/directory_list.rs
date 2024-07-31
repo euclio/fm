@@ -123,7 +123,6 @@ pub enum DirectoryMessage {
 
 #[relm4::factory(pub)]
 impl FactoryComponent for Directory {
-    type ParentInput = AppMsg;
     type ParentWidget = panel::Paned;
     type Widgets = DirectoryWidgets;
     type Init = gio::File;
@@ -167,10 +166,6 @@ impl FactoryComponent for Directory {
         }
     }
 
-    fn output_to_parent_input(output: Self::Output) -> Option<AppMsg> {
-        Some(output)
-    }
-
     fn init_model(dir: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
         debug_assert!(
             dir.query_file_type(gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
@@ -208,42 +203,46 @@ impl FactoryComponent for Directory {
     fn init_widgets(
         &mut self,
         _index: &DynamicIndex,
-        root: &Self::Root,
+        root: Self::Root,
         _returned_widget: &gtk::Widget,
         sender: FactorySender<Self>,
     ) -> Self::Widgets {
         let factory = gtk::SignalListItemFactory::new();
 
         factory.connect_setup(clone!(
-            @strong sender as sender,
-            @weak self.list_model as selection,
-        => move |_, item| {
-            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-            build_list_item_view(&selection, item, &sender);
-        }));
+            #[strong]
+            sender,
+            #[weak(rename_to = selection)]
+            self.list_model,
+            move |_, item| {
+                let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+                build_list_item_view(&selection, item, &sender);
+            }
+        ));
 
         // Store the drop controllers we add by widget so that we can remove them on unbind.
+        #[allow(clippy::arc_with_non_send_sync)]
         let controllers = Arc::new(Mutex::new(HashMap::new()));
 
         factory.connect_bind(clone!(
-                @strong sender as sender,
-                @strong controllers as controllers,
-        => move |_, list_item| {
-            let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
-            let widget = list_item.child().unwrap();
+            #[strong]
+            sender,
+            #[strong]
+            controllers,
+            move |_, list_item| {
+                let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
+                let widget = list_item.child().unwrap();
 
-            let info = list_item
-                .item()
-                .and_downcast::<gio::FileInfo>()
-                .unwrap();
+                let info = list_item.item().and_downcast::<gio::FileInfo>().unwrap();
 
-            if matches!(info.file_type(), gio::FileType::Directory) {
-                let dir = info.file().unwrap();
-                let target = new_drop_target_for_dir(dir, sender.clone());
-                widget.add_controller(target.clone());
-                controllers.lock().unwrap().insert(widget, target);
+                if matches!(info.file_type(), gio::FileType::Directory) {
+                    let dir = info.file().unwrap();
+                    let target = new_drop_target_for_dir(dir, sender.clone());
+                    widget.add_controller(target.clone());
+                    controllers.lock().unwrap().insert(widget, target);
+                }
             }
-        }));
+        ));
 
         factory.connect_unbind(move |_, list_item| {
             let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
@@ -274,15 +273,17 @@ impl FactoryComponent for Directory {
 
         let menu = &widgets.context_menu;
 
-        click_controller.connect_pressed(
-            clone!(@strong dir, @weak widgets.list_view as list_view, @strong menu => move |_, _, x, y| {
+        click_controller.connect_pressed(clone!(
+            #[strong]
+            menu,
+            move |_, _, x, y| {
                 let model = populate_directory_menu_model();
 
                 menu.set_menu_model(Some(&model));
                 menu.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
                 menu.popup();
-            }),
-        );
+            }
+        ));
         register_directory_context_actions(widgets.list_view.upcast_ref(), sender.clone());
         widgets.list_view.add_controller(click_controller);
 
@@ -334,15 +335,20 @@ impl FactoryComponent for Directory {
                     &file,
                 );
 
-                dialog.connect_response(clone!(@strong file => move |this, response| {
-                    if let gtk::ResponseType::Ok = response {
-                        if let Some(app_info) = this.app_info() {
-                            let _ = app_info.launch(&[file.clone()], gio::AppLaunchContext::NONE);
+                dialog.connect_response(clone!(
+                    #[strong]
+                    file,
+                    move |this, response| {
+                        if let gtk::ResponseType::Ok = response {
+                            if let Some(app_info) = this.app_info() {
+                                let _ =
+                                    app_info.launch(&[file.clone()], gio::AppLaunchContext::NONE);
+                            }
                         }
-                    }
 
-                    this.hide();
-                }));
+                        this.hide();
+                    }
+                ));
 
                 dialog.show();
             }
@@ -356,7 +362,7 @@ impl FactoryComponent for Directory {
                     let results = future::join_all(selected_file_info.iter().map(|f| {
                         f.file()
                             .unwrap()
-                            .trash_future(glib::source::PRIORITY_DEFAULT)
+                            .trash_future(glib::Priority::DEFAULT)
                             .map(move |res| (res, f))
                     }))
                     .await;
@@ -366,17 +372,19 @@ impl FactoryComponent for Directory {
                         .flat_map(|(result, info)| match result {
                             Ok(_) => Some(info),
                             Err(e) => {
-                                sender.output(AppMsg::Error(Box::new(e)));
+                                sender.output(AppMsg::Error(Box::new(e))).unwrap();
                                 None
                             }
                         })
                         .collect::<Vec<_>>();
 
                     if !trashed_files.is_empty() {
-                        sender.output(AppMsg::Toast(match &trashed_files[..] {
-                            [info] => format!("'{}' moved to trash", info.display_name()),
-                            _ => format!("{} files moved to trash", trashed_files.len()),
-                        }));
+                        sender
+                            .output(AppMsg::Toast(match &trashed_files[..] {
+                                [info] => format!("'{}' moved to trash", info.display_name()),
+                                _ => format!("{} files moved to trash", trashed_files.len()),
+                            }))
+                            .unwrap();
                     }
                 });
             }
@@ -394,14 +402,14 @@ impl FactoryComponent for Directory {
                             .query_info_future(
                                 gio::FILE_ATTRIBUTE_TRASH_ORIG_PATH,
                                 gio::FileQueryInfoFlags::empty(),
-                                glib::source::PRIORITY_DEFAULT,
+                                glib::Priority::DEFAULT,
                             )
                             .await;
 
                         let info = match info {
                             Ok(info) => info,
                             Err(err) => {
-                                sender.output(AppMsg::Error(Box::new(err)));
+                                sender.output(AppMsg::Error(Box::new(err))).unwrap();
                                 return;
                             }
                         };
@@ -515,8 +523,14 @@ fn build_list_item_view(
     let click_controller = gtk::GestureClick::builder()
         .button(BUTTON_RIGHT_CLICK)
         .build();
-    click_controller.connect_pressed(
-        clone!(@weak selection, @weak list_item, @weak menu => move |_, _, x, y| {
+    click_controller.connect_pressed(clone!(
+        #[weak]
+        selection,
+        #[weak]
+        list_item,
+        #[weak]
+        menu,
+        move |_, _, x, y| {
             // If the clicked item isn't part of the selection, select it.
             let position = list_item.position();
 
@@ -532,8 +546,8 @@ fn build_list_item_view(
             menu.set_menu_model(Some(&model));
             menu.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
             menu.popup();
-        }),
-    );
+        }
+    ));
     root.add_controller(click_controller);
 
     let drag_source_controller = gtk::DragSource::builder()
@@ -576,19 +590,23 @@ fn register_entry_context_actions(
     rename_popover: &gtk::Popover,
     sender: FactorySender<Directory>,
 ) {
-    let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
+    let mut group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
 
-    group.add_action(&RelmAction::<OpenDefaultAction>::new_with_target_value(
+    group.add_action(RelmAction::<OpenDefaultAction>::new_with_target_value(
         move |_, uri: String| {
             let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
         },
     ));
 
-    group.add_action(&RelmAction::<OpenChooserAction>::new_with_target_value(
-        clone!(@strong sender => move |_, uri: String| {
-            let file = gio::File::for_uri(&uri);
-            sender.input(DirectoryMessage::ChooseAndLaunchApp(file));
-        }),
+    group.add_action(RelmAction::<OpenChooserAction>::new_with_target_value(
+        clone!(
+            #[strong]
+            sender,
+            move |_, uri: String| {
+                let file = gio::File::for_uri(&uri);
+                sender.input(DirectoryMessage::ChooseAndLaunchApp(file));
+            }
+        ),
     ));
 
     // This is a bit nasty: we create a new handler each time that the action is activated so that
@@ -596,10 +614,22 @@ fn register_entry_context_actions(
     // parameter. We have to disconnect the old handler each time because registering a new handler
     // is additive.
     let previous_handler_id = RefCell::new(None);
-    group.add_action(&RelmAction::<RenameAction>::new_with_target_value(
-        clone!(@weak rename_popover, @strong sender => move |_, uri: String| {
-            let root = rename_popover.child().unwrap().downcast::<gtk::Box>().unwrap();
-            let entry = root.first_child().unwrap().downcast::<gtk::Entry>().unwrap();
+    group.add_action(RelmAction::<RenameAction>::new_with_target_value(clone!(
+        #[weak]
+        rename_popover,
+        #[strong]
+        sender,
+        move |_, uri: String| {
+            let root = rename_popover
+                .child()
+                .unwrap()
+                .downcast::<gtk::Box>()
+                .unwrap();
+            let entry = root
+                .first_child()
+                .unwrap()
+                .downcast::<gtk::Entry>()
+                .unwrap();
 
             if let Some(id) = previous_handler_id.borrow_mut().take() {
                 glib::signal_handler_disconnect(&entry, id);
@@ -618,43 +648,47 @@ fn register_entry_context_actions(
             }
 
             let signal_handler_id = entry.connect_activate(clone!(
-                    @weak rename_popover,
-                    @strong file,
-                    @strong sender => move |this| {
-                        let new_name = this.text();
-                        info!("renaming {} to {}", file.uri(), new_name);
+                #[weak]
+                rename_popover,
+                #[strong]
+                file,
+                #[strong]
+                sender,
+                move |this| {
+                    let new_name = this.text();
+                    info!("renaming {} to {}", file.uri(), new_name);
 
-
-                        let res = (|| -> anyhow::Result<()> {
-                            if new_name.is_empty() {
-                                bail!("File name cannot be empty.");
-                            }
-
-                            file.set_display_name(&new_name, gio::Cancellable::NONE)?;
-
-                            Ok(())
-                        })();
-
-                        if let Err(err) = res {
-                            sender.output(AppMsg::Error(err.into()));
+                    let res = (|| -> anyhow::Result<()> {
+                        if new_name.is_empty() {
+                            bail!("File name cannot be empty.");
                         }
 
-                        rename_popover.popdown();
-            }));
+                        file.set_display_name(&new_name, gio::Cancellable::NONE)?;
+
+                        Ok(())
+                    })();
+
+                    if let Err(err) = res {
+                        sender.output(AppMsg::Error(err.into())).unwrap();
+                    }
+
+                    rename_popover.popdown();
+                }
+            ));
 
             *previous_handler_id.borrow_mut() = Some(signal_handler_id);
 
             rename_popover.popup();
-        }),
-    ));
+        }
+    )));
 
     let sender_ = sender.clone();
-    group.add_action(&RelmAction::<TrashSelectionAction>::new_stateless(
+    group.add_action(RelmAction::<TrashSelectionAction>::new_stateless(
         move |_| sender_.input(DirectoryMessage::TrashSelection),
     ));
 
     group.add_action(
-        &RelmAction::<RestoreSelectionFromTrashAction>::new_stateless(move |_| {
+        RelmAction::<RestoreSelectionFromTrashAction>::new_stateless(move |_| {
             sender.input(DirectoryMessage::RestoreSelectionFromTrash)
         }),
     );
@@ -670,9 +704,9 @@ fn register_directory_context_actions(
     directory_list_view: &gtk::Widget,
     sender: FactorySender<Directory>,
 ) {
-    let group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
+    let mut group = RelmActionGroup::<DirectoryListRightClickActionGroup>::new();
 
-    group.add_action(&RelmAction::<NewFolderAction>::new_stateless(move |_| {
+    group.add_action(RelmAction::<NewFolderAction>::new_stateless(move |_| {
         sender.input(DirectoryMessage::ShowNewFolderDialog)
     }));
 
@@ -694,24 +728,32 @@ fn new_drop_target_for_dir(dir: gio::File, sender: FactorySender<Directory>) -> 
 
     drop_target.set_types(&[gio::File::static_type()]);
 
-    drop_target.connect_value_notify(clone!(@strong dir => move |this| {
-        if let Some(value) = this.value() {
-            let file = value.get::<gio::File>().unwrap();
+    drop_target.connect_value_notify(clone!(
+        #[strong]
+        dir,
+        move |this| {
+            if let Some(value) = this.value() {
+                let file = value.get::<gio::File>().unwrap();
 
-            info!("attempting to drop file {}", file.uri());
+                info!("attempting to drop file {}", file.uri());
 
-            if file.parent().as_ref() == Some(&dir) {
-                info!("rejecting drop; file is already in directory");
-                this.reject();
+                if file.parent().as_ref() == Some(&dir) {
+                    info!("rejecting drop; file is already in directory");
+                    this.reject();
+                }
             }
         }
-    }));
+    ));
 
-    drop_target.connect_drop(clone!(@strong dir => move |_, value, _, _| {
-        ops::handle_drop(value, &dir, sender.output_sender().clone());
+    drop_target.connect_drop(clone!(
+        #[strong]
+        dir,
+        move |_, value, _, _| {
+            ops::handle_drop(value, &dir, sender.output_sender().clone());
 
-        true
-    }));
+            true
+        }
+    ));
 
     drop_target
 }
@@ -749,7 +791,9 @@ fn build_selection(selection: &gtk::MultiSelection) -> Selection {
 
 /// Notifies the main component of the path of a new selection.
 fn send_new_selection(selection: &gtk::MultiSelection, sender: &FactorySender<Directory>) {
-    sender.output(AppMsg::NewSelection(build_selection(selection)));
+    sender
+        .output(AppMsg::NewSelection(build_selection(selection)))
+        .unwrap();
 }
 
 /// Constructs a new menu model for a directory entry's right-click context menu.
@@ -829,7 +873,7 @@ fn open_application_for_file(file: &gio::File, sender: &FactorySender<Directory>
     if let Err(e) =
         gio::AppInfo::launch_default_for_uri(file.uri().as_str(), None::<&gio::AppLaunchContext>)
     {
-        sender.output(AppMsg::Error(Box::new(e)));
+        sender.output(AppMsg::Error(Box::new(e))).unwrap();
     }
 }
 

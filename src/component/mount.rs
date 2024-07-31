@@ -67,13 +67,15 @@ impl Component for Mount {
                 set_selection_mode: gtk::SelectionMode::None,
                 set_margin_all: 5,
 
-                #[name = "uri_entry"]
-                gtk::Entry {
-                    set_placeholder_text: Some("Enter server address..."),
-                    set_buffer: &model.uri_buffer,
-                    set_width_chars: 50,
+                gtk::ListBoxRow {
+                    #[name = "uri_entry"]
+                    gtk::Entry {
+                        set_placeholder_text: Some("Enter server address..."),
+                        set_buffer: &model.uri_buffer,
+                        set_width_chars: 50,
 
-                    connect_activate => MountMsg::Response(gtk::ResponseType::Accept),
+                        connect_activate => MountMsg::Response(gtk::ResponseType::Accept),
+                    },
                 },
             },
 
@@ -83,12 +85,12 @@ impl Component for Mount {
 
             connect_close_request[sender] => move |_| {
                 sender.input(MountMsg::Close);
-                gtk::Inhibit(true)
+                glib::signal::Propagation::Proceed
             },
         }
     }
 
-    fn init(_: (), root: &Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(_: (), root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let model = Mount {
             uri_buffer: gtk::EntryBuffer::default(),
             visible: false,

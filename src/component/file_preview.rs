@@ -348,7 +348,7 @@ impl Component for FilePreviewModel {
         }
     }
 
-    fn init(_: (), root: &Self::Root, _sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(_: (), root: Self::Root, _sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let model = FilePreviewModel {
             info: vec![],
             abort_preview: None,
@@ -541,7 +541,7 @@ async fn query_selection_info(selection: FileSelection) -> Result<Vec<FileInfo>,
             .query_info_future(
                 gio::FILE_ATTRIBUTE_STANDARD_TYPE,
                 gio::FileQueryInfoFlags::NONE,
-                glib::PRIORITY_DEFAULT,
+                glib::Priority::DEFAULT,
             )
             .await;
 
@@ -570,7 +570,7 @@ async fn query_selection_info(selection: FileSelection) -> Result<Vec<FileInfo>,
             .query_info_future(
                 &attributes,
                 gio::FileQueryInfoFlags::NONE,
-                glib::PRIORITY_DEFAULT,
+                glib::Priority::DEFAULT,
             )
             .await;
 
@@ -617,7 +617,7 @@ async fn read_start_of_file(file: &gio::File) -> Result<Vec<u8>, io::Error> {
     let mut contents = Vec::with_capacity(PREVIEW_BUFFER_SIZE);
 
     let reader = file
-        .read_future(glib::PRIORITY_DEFAULT)
+        .read_future(glib::Priority::DEFAULT)
         .await
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
         .into_async_buf_read(PREVIEW_BUFFER_SIZE);
