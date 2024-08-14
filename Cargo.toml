@@ -1,5 +1,5 @@
 [package]
-name = "fm"
+name = "fm-euclio"
 version = "0.1.0"
 edition = "2021"
 authors = ["Andy Russell <arussell123@gmail.com>"]
@@ -7,7 +7,7 @@ publish = false
 license = "MIT"
 repository = "https://github.com/euclio/fm"
 homepage = "https://github.com/euclio/fm"
-description = "A small, general-purpose file manager."
+description = "fm-euclio is a small, general-purpose file manager built using GTK and Relm4."
 
 [dependencies]
 anyhow = "1.0.51"
