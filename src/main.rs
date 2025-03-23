@@ -33,7 +33,7 @@ fn main() -> Result<()> {
     gtk::init().unwrap();
 
     relm4::set_global_css(include_str!("styles.css"));
-    let app = RelmApp::new("io.github.fm");
+    let app = RelmApp::new("io.github.fm").with_args(vec![]);
     app.run::<AppModel>(fs::canonicalize(args.file)?);
 
     info!("main loop exited");
